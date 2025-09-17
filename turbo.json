@@ -1,0 +1,31 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env", ".env.local", "tsconfig.base.json"],
+  "globalEnv": ["DATABASE_URL", "PORT", "AUTH_SECRET", "NEXT_PUBLIC_API_URL"],
+  "tasks": {
+    "dev": {
+      "persistent": true,
+      "cache": false
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "lint": {
+      "outputs": []
+    },
+    "test": {
+      "outputs": [".coverage/**"]
+    },
+    "migrate:latest": {
+      "outputs": []
+    },
+    "codegen": {
+      "outputs": ["src/database-types.ts"]
+    }
+  }
+}

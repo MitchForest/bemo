@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@repo/schemas": ["packages/schemas/src/index.ts"],
+      "@repo/schemas/*": ["packages/schemas/src/*"],
+      "@repo/engine": ["packages/engine/src/index.ts"],
+      "@repo/engine/*": ["packages/engine/src/*"],
+      "@repo/db": ["packages/db/src/index.ts"],
+      "@repo/db/*": ["packages/db/src/*"],
+      "@repo/auth": ["packages/auth/src/index.ts"],
+      "@repo/auth/*": ["packages/auth/src/*"],
+      "@repo/utils": ["packages/utils/src/index.ts"],
+      "@repo/utils/*": ["packages/utils/src/*"],
+      "@repo/curriculum": ["packages/curriculum/src/index.ts"],
+      "@repo/curriculum/*": ["packages/curriculum/src/*"],
+      "@repo/api-client": ["packages/api-client/src/index.ts"],
+      "@repo/api-client/*": ["packages/api-client/src/*"]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "bemo-learning",
+  "private": true,
+  "packageManager": "bun@1.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome format . --write",
+    "test": "turbo run test",
+    "db:migrate": "turbo run migrate:latest",
+    "db:codegen": "turbo run codegen"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2",
+    "@biomejs/biome": "^1.9.4"
+  }
+}
