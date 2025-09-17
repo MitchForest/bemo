@@ -9,16 +9,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.6.14",
-    "@hono/zod-openapi": "^0.18.3",
     "@hono/swagger-ui": "^0.4.1",
-    "@scalar/hono-api-reference": "^0.5.165",
-    "zod": "^3.24.1",
+    "@hono/zod-openapi": "^0.18.3",
+    "@hono/zod-validator": "^0.7.3",
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/engine": "workspace:*",
     "@repo/schemas": "workspace:*",
-    "@repo/utils": "workspace:*"
+    "@repo/utils": "workspace:*",
+    "@scalar/hono-api-reference": "^0.5.165",
+    "hono": "^4.6.14",
+    "hono-rate-limiter": "^0.4.2",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
