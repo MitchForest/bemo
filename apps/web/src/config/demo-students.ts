@@ -1,0 +1,9 @@
+export const DEMO_STUDENTS = {
+  maya: "11111111-1111-4111-8111-111111111111",
+  lucas: "22222222-2222-4222-8222-222222222222",
+  zara: "55555555-5555-4555-8555-555555555555",
+} as const;
+
+export type DemoStudentKey = keyof typeof DEMO_STUDENTS;
+
+export const DEFAULT_STUDENT_ID = DEMO_STUDENTS.maya;

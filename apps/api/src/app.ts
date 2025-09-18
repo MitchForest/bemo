@@ -4,6 +4,11 @@ import { auth } from "@repo/auth";
 import { apiReference } from "@scalar/hono-api-reference";
 import evidenceRoutes from "./routes/evidence";
 import planRoutes from "./routes/plan";
+import contentRoutes from "./routes/content";
+import diagnosticRoutes from "./routes/diagnostic";
+import profileRoutes from "./routes/profile";
+import reportsRoutes from "./routes/reports";
+import motivationRoutes from "./routes/motivation";
 
 export const app = new OpenAPIHono();
 
@@ -20,6 +25,11 @@ app.get("/health", (c) => {
 // API routes
 app.route("/", planRoutes);
 app.route("/", evidenceRoutes);
+app.route("/", contentRoutes);
+app.route("/", diagnosticRoutes);
+app.route("/", profileRoutes);
+app.route("/", reportsRoutes);
+app.route("/", motivationRoutes);
 
 // OpenAPI documentation
 app.doc("/doc", {

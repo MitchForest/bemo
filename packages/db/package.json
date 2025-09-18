@@ -11,7 +11,8 @@
     "migrate:up": "tsx src/migrate.ts up",
     "migrate:down": "tsx src/migrate.ts down",
     "migrate:latest": "tsx src/migrate.ts latest",
-    "codegen": "kysely-codegen --dialect postgres --out-file ./src/database-types.ts"
+    "codegen": "kysely-codegen --dialect postgres --out-file ./src/database-types.ts",
+    "seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "kysely": "^0.27.4",

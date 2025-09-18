@@ -6,6 +6,7 @@ export const StudentProfileSchema = z
     email: z.string().email().optional(),
     name: z.string().min(1).max(100),
     grade: z.string(),
+    gender: z.string().optional(),
     birthDate: z.string().datetime().optional(),
     parentIds: z.array(z.string().uuid()).default([]),
     coachIds: z.array(z.string().uuid()).default([]),
@@ -39,10 +40,11 @@ export const StudentProfileSchema = z
     },
   });
 
-export const StudentTopicStateSchema = z
+export const StudentSkillStateSchema = z
   .object({
     studentId: z.string().uuid(),
-    topicId: z.string().uuid(),
+    skillId: z.string().uuid(),
+    topicId: z.string().uuid().optional(),
     stability: z.number().min(0).openapi({
       description: "Memory half-life proxy",
       example: 1.0,
@@ -62,17 +64,26 @@ export const StudentTopicStateSchema = z
       description: "Speed relative to expected",
       example: 1.2,
     }),
+    experienceTallies: z.record(z.string(), z.number().int().min(0)).default({}).openapi({
+      description: "Counts of experiences delivered for this skill",
+    }),
     strugglingFlag: z.boolean().default(false),
     overdueDays: z.number().int().min(0).default(0),
     easiness: z.number().min(1).max(5).optional().openapi({
       description: "SM-2 style easiness factor",
     }),
+    retentionProbability365: z
+      .number()
+      .min(0)
+      .max(1)
+      .default(0)
+      .openapi({ description: "Probability the skill will be retained after 365 days" }),
   })
   .openapi({
-    description: "Student state for a topic",
+    description: "Student state for a skill",
     example: {
       studentId: "123e4567-e89b-12d3-a456-426614174003",
-      topicId: "123e4567-e89b-12d3-a456-426614174000",
+      skillId: "123e4567-e89b-12d3-a456-426614174000",
       stability: 1.5,
       strength: 0.8,
       repNum: 5,
@@ -87,7 +98,7 @@ export const StudentStatsSchema = z
     currentStreak: z.number().int().min(0),
     longestStreak: z.number().int().min(0),
     totalMinutes: z.number().int().min(0),
-    topicsCompleted: z.number().int().min(0),
+    skillsCompleted: z.number().int().min(0),
     speedDrillsCompleted: z.number().int().min(0),
     lastActiveAt: z.string().datetime(),
     weeklyXp: z
@@ -102,5 +113,7 @@ export const StudentStatsSchema = z
   .openapi({ description: "Student statistics" });
 
 export type StudentProfile = z.infer<typeof StudentProfileSchema>;
-export type StudentTopicState = z.infer<typeof StudentTopicStateSchema>;
+export const StudentTopicStateSchema = StudentSkillStateSchema;
+export type StudentSkillState = z.infer<typeof StudentSkillStateSchema>;
+export type StudentTopicState = StudentSkillState;
 export type StudentStats = z.infer<typeof StudentStatsSchema>;

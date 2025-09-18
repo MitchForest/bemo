@@ -16,6 +16,8 @@ export function createOpenAPIApp() {
           400,
         );
       }
+
+      return;
     },
   });
 

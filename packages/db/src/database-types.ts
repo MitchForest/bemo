@@ -2,6 +2,29 @@
 // Run: bun run kysely:generate
 
 export interface DB {
+  organizations: OrganizationsTable;
+  subjects: SubjectsTable;
+  courses: CoursesTable;
+  course_units: CourseUnitsTable;
+  lessons: LessonsTable;
+  lesson_sections: LessonSectionsTable;
+  lesson_steps: LessonStepsTable;
+  assessments: AssessmentsTable;
+  assessment_nodes: AssessmentNodesTable;
+  assessment_attempts: AssessmentAttemptsTable;
+  assessment_responses: AssessmentResponsesTable;
+  cohorts: CohortsTable;
+  cohort_members: CohortMembersTable;
+  enrollments: EnrollmentsTable;
+  staff_assignments: StaffAssignmentsTable;
+  assets: AssetsTable;
+  practice_activities: PracticeActivitiesTable;
+  micro_games: MicroGamesTable;
+  check_charts: CheckChartsTable;
+  check_chart_entries: CheckChartEntriesTable;
+  motivation_tracks: MotivationTracksTable;
+  motivation_rewards: MotivationRewardsTable;
+  joy_breaks: JoyBreaksTable;
   users: UsersTable;
   sessions: SessionsTable;
   accounts: AccountsTable;
@@ -23,6 +46,350 @@ interface UsersTable {
   name: string;
   role: "student" | "parent" | "coach" | "admin";
   profile_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface OrganizationsTable {
+  id: string;
+  name: string;
+  slug: string;
+  type: "district" | "school" | "microschool" | "cohort" | "homeschool";
+  settings: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface SubjectsTable {
+  id: string;
+  organization_id: string;
+  slug: string;
+  title: string;
+  domain: "math" | "reading";
+  color: string | null;
+  icon: string | null;
+  description: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CoursesTable {
+  id: string;
+  organization_id: string;
+  subject_id: string;
+  title: string;
+  slug: string;
+  grade_band: "PreK" | "K" | "1" | null;
+  summary: string | null;
+  icon: string | null;
+  color: string | null;
+  estimated_minutes: number | null;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CourseUnitsTable {
+  id: string;
+  course_id: string;
+  title: string;
+  summary: string | null;
+  sequence: number;
+  icon: string | null;
+  color: string | null;
+  expected_minutes: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface LessonsTable {
+  id: string;
+  unit_id: string;
+  topic_id: string | null;
+  title: string;
+  slug: string;
+  focus_statement: string | null;
+  essential_question: string | null;
+  objective: string | null;
+  expected_time_minutes: number;
+  mood_color: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface LessonSectionsTable {
+  id: string;
+  lesson_id: string;
+  title: string;
+  type:
+    | "direct_instruction"
+    | "guided_practice"
+    | "independent_practice"
+    | "collaborative"
+    | "reteach"
+    | "assessment"
+    | "reflection";
+  sequence: number;
+  knowledge_point_ids: any;
+  instructions: any;
+  media_assets: any;
+  expected_minutes: number | null;
+  step_ids: any;
+  practice_activity_ids: any;
+}
+
+interface LessonStepsTable {
+  id: string;
+  section_id: string;
+  kind:
+    | "coach_prompt"
+    | "student_action"
+    | "modeling"
+    | "manipulative_setup"
+    | "guided_practice"
+    | "independent_practice"
+    | "reflection"
+    | "celebration"
+    | "transition";
+  title: string | null;
+  script: string | null;
+  student_action: string | null;
+  modality: "voice" | "tap" | "trace" | "type" | "drag" | null;
+  asset_ids: any;
+  cues: any;
+  duration_seconds: number | null;
+  transition_to: string | null;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface AssessmentsTable {
+  id: string;
+  course_id: string | null;
+  title: string;
+  type: "adaptive_entry" | "checkpoint" | "benchmark" | "exit_ticket";
+  mode: "adaptive" | "fixed";
+  description: string | null;
+  entry_topic_ids: any;
+  config: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface AssessmentNodesTable {
+  id: string;
+  assessment_id: string;
+  topic_id: string;
+  knowledge_point_id: string | null;
+  difficulty: number;
+  next_on_correct: any;
+  next_on_incorrect: any;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface AssessmentAttemptsTable {
+  id: string;
+  assessment_id: string;
+  student_id: string;
+  started_at: Date;
+  completed_at: Date | null;
+  status: "in_progress" | "completed" | "abandoned";
+  score: number | null;
+  mastery_topic_id: string | null;
+  summary: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface AssessmentResponsesTable {
+  id: string;
+  attempt_id: string;
+  item_id: string | null;
+  topic_id: string;
+  knowledge_point_id: string | null;
+  result: "correct" | "incorrect" | "partial" | "skipped";
+  latency_ms: number;
+  payload: any;
+  created_at: Date;
+}
+
+interface AssetsTable {
+  id: string;
+  organization_id: string | null;
+  title: string;
+  type:
+    | "audio"
+    | "image"
+    | "video"
+    | "animation"
+    | "document"
+    | "manipulative"
+    | "tts_script"
+    | "interactive"
+    | "other";
+  uri: string;
+  alt_text: string | null;
+  locale: string;
+  duration_ms: number | null;
+  transcript: string | null;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface MicroGamesTable {
+  id: string;
+  slug: string;
+  title: string;
+  genre: "arcade" | "puzzle" | "simulation" | "story" | "creative" | "movement";
+  description: string | null;
+  domain: "math" | "reading" | null;
+  engine_hooks: any;
+  io_schema: any;
+  ui: any;
+  asset_ids: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface PracticeActivitiesTable {
+  id: string;
+  knowledge_point_id: string | null;
+  topic_id: string | null;
+  type:
+    | "manipulative"
+    | "game"
+    | "speed_drill"
+    | "story_read"
+    | "movement"
+    | "breathing"
+    | "interactive_quiz"
+    | "custom";
+  title: string;
+  description: string | null;
+  micro_game_id: string | null;
+  config: any;
+  expected_minutes: number | null;
+  asset_ids: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CheckChartsTable {
+  id: string;
+  organization_id: string | null;
+  title: string;
+  description: string | null;
+  domain: "math" | "reading";
+  grade_band: "PreK" | "K" | "1";
+  stage_code:
+    | "M0_FOUNDATIONS"
+    | "M1_PREK_CORE"
+    | "M2_PREK_STRETCH"
+    | "M3_K_CORE"
+    | "M4_G1_CORE"
+    | null;
+  icon: string | null;
+  color: string | null;
+  display_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CheckChartEntriesTable {
+  id: string;
+  chart_id: string;
+  sequence: number;
+  display_order: number;
+  statement: string;
+  topic_id: string | null;
+  topic_ids: any;
+  knowledge_point_id: string | null;
+  knowledge_point_ids: any;
+  badge_id: string | null;
+  icon_asset_id: string | null;
+  coach_only: boolean;
+  celebration_copy: string | null;
+  threshold: any;
+  metadata: any;
+}
+
+interface MotivationTracksTable {
+  id: string;
+  organization_id: string | null;
+  title: string;
+  description: string | null;
+  target_xp: number;
+  cadence: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface MotivationRewardsTable {
+  id: string;
+  track_id: string | null;
+  type: "badge" | "sticker" | "joy_break" | "time_back" | "unlockable";
+  title: string;
+  description: string | null;
+  threshold: number;
+  icon: string | null;
+  asset_ids: any;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface JoyBreaksTable {
+  id: string;
+  title: string;
+  description: string | null;
+  duration_seconds: number;
+  asset_ids: any;
+  metadata: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CohortsTable {
+  id: string;
+  organization_id: string;
+  course_id: string | null;
+  name: string;
+  grade_band: "PreK" | "K" | "1" | null;
+  color: string | null;
+  icon: string | null;
+  settings: any;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface CohortMembersTable {
+  cohort_id: string;
+  student_id: string;
+  joined_at: Date;
+}
+
+interface EnrollmentsTable {
+  id: string;
+  student_id: string;
+  course_id: string;
+  cohort_id: string | null;
+  status: "active" | "paused" | "completed" | "withdrawn";
+  started_at: Date;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface StaffAssignmentsTable {
+  id: string;
+  user_id: string;
+  cohort_id: string | null;
+  course_id: string | null;
+  role: "teacher" | "coach" | "admin";
   created_at: Date;
   updated_at: Date;
 }
@@ -68,6 +435,13 @@ interface TopicsTable {
   domain: "math" | "reading";
   strand: string;
   grade_band: "PreK" | "K" | "1";
+  stage_code:
+    | "M0_FOUNDATIONS"
+    | "M1_PREK_CORE"
+    | "M2_PREK_STRETCH"
+    | "M3_K_CORE"
+    | "M4_G1_CORE"
+    | null;
   description: string | null;
   interference_group: string | null;
   expected_time_seconds: number;

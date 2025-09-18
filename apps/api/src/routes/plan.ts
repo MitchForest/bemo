@@ -47,18 +47,17 @@ app.openapi(planRoute, async (c) => {
   }
 
   const query = c.req.valid("query");
-  const tasks = await getPlan({
+  const plan = await getPlan({
     ...query,
     studentId: query.studentId || session.user.id,
   });
 
   return c.json(
     {
-      tasks,
-      metadata: {
-        dueTopicsCount: 0,
-        overdueTopicsCount: 0,
-      },
+      tasks: plan.tasks,
+      stats: plan.stats,
+      studentStates: plan.studentStates,
+      motivation: plan.motivation,
     },
     200,
   );

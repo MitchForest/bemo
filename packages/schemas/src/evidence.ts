@@ -23,10 +23,11 @@ export const InputPayloadSchema = z
 export const EvidenceEventSchema = z
   .object({
     studentId: z.string().uuid(),
-    topicId: z.string().uuid(),
+    skillId: z.string().uuid(),
     knowledgePointId: z.string().uuid().optional(),
     itemId: z.string().uuid(),
     taskId: z.string().uuid().optional(),
+    experienceId: z.string().uuid().optional(),
     timestamp: z.string().datetime(),
     result: ResultSchema,
     latencyMs: z.number().int().min(0),
@@ -38,7 +39,7 @@ export const EvidenceEventSchema = z
     description: "Evidence event from student interaction",
     example: {
       studentId: "123e4567-e89b-12d3-a456-426614174003",
-      topicId: "123e4567-e89b-12d3-a456-426614174000",
+      skillId: "123e4567-e89b-12d3-a456-426614174000",
       itemId: "123e4567-e89b-12d3-a456-426614174001",
       timestamp: "2024-01-15T10:30:00Z",
       result: "correct",

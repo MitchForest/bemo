@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 
-export const UserRoleSchema = z.enum(["student", "parent", "coach", "admin"]).openapi({
+export const UserRoleSchema = z.enum(["student", "parent", "teacher", "coach", "admin"]).openapi({
   description: "User role",
   example: "student",
 });

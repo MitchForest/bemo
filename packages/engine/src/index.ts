@@ -1,10 +1,18 @@
-import type { PlanRequest, Task } from "@repo/schemas";
-
-export async function getPlan(_params: PlanRequest & { studentId: string }): Promise<Task[]> {
-  // Placeholder implementation
-  return [];
-}
-
-export async function submitEvidence(_studentId: string, _payload: unknown): Promise<void> {
-  // Placeholder implementation
-}
+export { getPlan } from "./plan";
+export type { PlanComputationResult } from "./plan";
+export { submitEvidence } from "./evidence";
+export {
+  getMotivationSummary,
+  claimReward,
+  getMotivationLeagues,
+  joinMotivationSquad,
+  getMotivationQuests,
+  updateQuestTaskProgress,
+  claimQuestReward,
+  getTimeBackLedgerEntries,
+  claimTimeBackEntry,
+  getMotivationDigest,
+} from "./motivation";
+export { getNextDiagnosticProbe, submitDiagnosticAnswer } from "./diagnostic";
+export { getStudentProfileSummary } from "./profile";
+export { getWeeklyReport } from "./report";

@@ -65,12 +65,19 @@ app.openapi(evidenceRoute, async (c) => {
   const body = c.req.valid("json");
 
   try {
-    await submitEvidence(session.user.id, body);
+    const result = await submitEvidence(session.user.id, body);
 
     return c.json(
       {
         success: true,
-        xpEarned: 10, // Placeholder
+        updatedStates: result.updatedStates.map((state) => ({
+          topicId: state.skillId, // Map skillId to topicId for API compatibility
+          dueAt: state.dueAt,
+          stability: state.stability,
+          strength: state.strength,
+        })),
+        xpEarned: result.xpEarned,
+        achievements: result.achievements,
       },
       200,
     );
