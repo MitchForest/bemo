@@ -55,7 +55,7 @@ root
    - One-click “Start adaptive check-in” with preview modal
 3. **Knowledge graph clarity pass**
    - Badge nodes (core, stretch, review) + gate icons
-   - Edge legends (prereq vs encompassed) and tooltips that show KP counts
+   - Edge legends (prereq vs encompassed) and tooltips showing linked task intents / XP rewards
    - Focus mode: filter by school/cohort/learner
 
 ### Next (Sprint 3–5)
@@ -92,12 +92,12 @@ Deliverables this cycle: add pattern components + storybook-like MDX showcase un
 - **Knowledge Graph**
   - Node badges (Core, Stretch, Review) with color tokens from domain palette.
   - Edge labels explaining prerequisite gates (AND/OR) + weight chips for encompassing edges.
-  - Left rail summary: topic counts per grade band, toggle to isolate struggling topics.
+  - Left rail summary: skill counts per grade band, toggle to isolate struggling skills.
   - Export button (PNG/SVG) to share with stakeholders.
 
 - **Momentum Meter**
   - Replace static progress with segmented bar showing due, upcoming, stretch.
-  - Add inline tooltip: “Review compressed via Topic RD-HFW-L2”.
+  - Add inline tooltip: “Review compressed via Skill RD_READ_HIGH_FREQ_SET_D”.
 
 - **Health Indicators**
   - Standardize iconography, include trend arrow per metric (24h delta).

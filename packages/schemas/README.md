@@ -7,8 +7,8 @@ Single source of truth for Zod schemas and TypeScript types across the Bemo plat
 | File | Description |
 | ---- | ----------- |
 | `common.ts` | Shared enums (domains, grade bands, modalities, item types, etc.). |
-| `student.ts` | Student profiles, topic states, and aggregate stats. |
-| `curriculum.ts` | Topics, knowledge points, items, assets, and authoring helpers. |
+| `student.ts` | Student profiles, skill states, and aggregate stats. |
+| `curriculum.ts` | Skills, learning items, task templates, assets, and authoring helpers. |
 | `content.ts` | Content catalog entities (practice activities, check charts, motivation assets). |
 | `task.ts` | Learning tasks, planner requests/responses, and plan stats. |
 | `evidence.ts` | Evidence events and submission envelopes. |
@@ -37,7 +37,7 @@ import {
   DiagnosticAnswerResponseSchema,
 } from "@repo/schemas";
 
-const nextRequest = DiagnosticNextRequestSchema.parse({ studentId, topicId });
+const nextRequest = DiagnosticNextRequestSchema.parse({ studentId, skillId });
 const answerPayload = DiagnosticAnswerRequestSchema.parse({
   studentId,
   probeId,

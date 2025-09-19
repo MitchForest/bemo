@@ -1,18 +1,18 @@
 import type {
   EvidenceEvent,
-  SubmitEvidence,
-  StudentSkillState,
   EvidenceResponse,
+  StudentSkillState,
+  SubmitEvidence,
 } from "@repo/schemas";
 import {
-  getAllSkills,
   applyStudentStateUpdates,
-  loadStudentSkillStates,
+  getAllSkills,
   loadStudentProfile,
+  loadStudentSkillStates,
   recordActivity,
   recordSkillMetricSample,
 } from "./data";
-import { updateMemoryState, computeSuccessScore } from "./memory";
+import { computeSuccessScore, updateMemoryState } from "./memory";
 
 interface EvidenceProcessingResult {
   updatedStates: StudentSkillState[];
@@ -24,7 +24,7 @@ export async function submitEvidence(
   studentId: string,
   payload: SubmitEvidence,
 ): Promise<EvidenceProcessingResult> {
-  const skills = getAllSkills();
+  const skills = await getAllSkills();
   const states = await loadStudentSkillStates(studentId, skills);
   const stateMap = new Map(states.map((state) => [state.skillId, state]));
   const skillMap = new Map(skills.map((skill) => [skill.id, skill]));
@@ -50,7 +50,7 @@ export async function submitEvidence(
       hintsUsed: event.hintsUsed ?? 0,
       weight: 1,
       now,
-      experienceId: event.experienceId,
+      taskTemplateId: event.taskTemplateId,
     });
 
     updates.set(skill.id, memoryResult.state);
@@ -70,7 +70,7 @@ export async function submitEvidence(
           hintsUsed: event.hintsUsed ?? 0,
           weight: edge.weight,
           now,
-          experienceId: undefined,
+          taskTemplateId: undefined,
         });
         updates.set(parentSkill.id, parentResult.state);
         stateMap.set(parentSkill.id, parentResult.state);
@@ -78,7 +78,7 @@ export async function submitEvidence(
     }
 
     const successScore = computeSuccessScore(event.result, event.hintsUsed ?? 0);
-    recordSkillMetricSample(skill.id, successScore, event.latencyMs, profile);
+    await recordSkillMetricSample(skill.id, successScore, event.latencyMs, profile);
     xpEarned += Math.round(8 + successScore * 12);
     minutesSpent += Math.max(0.05, event.latencyMs / 60000);
 

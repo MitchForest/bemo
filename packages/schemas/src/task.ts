@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
-import { ModalitySchema, TaskTypeSchema } from "./common";
-import { StudentTopicStateSchema } from "./student";
+import { ModalitySchema, TaskIntentSchema, TaskTypeSchema } from "./common";
+import { StudentSkillStateSchema } from "./student";
 
 const TaskModalityCapsSchema = z
   .object({
@@ -33,14 +33,13 @@ export const TaskSchema = z
   .object({
     id: z.string().uuid(),
     type: TaskTypeSchema,
-    topicIds: z.array(z.string().uuid()),
-    skillIds: z.array(z.string().uuid()).default([]),
-    knowledgePointIds: z.array(z.string().uuid()).default([]),
-    experienceIds: z.array(z.string().uuid()).default([]),
+    skillIds: z.array(z.string().uuid()).min(1),
+    taskTemplateIds: z.array(z.string().uuid()).default([]),
     estimatedMinutes: z.number().min(1).max(60),
     xpValue: z.number().int().min(1),
     modalities: z.array(ModalitySchema).default(["tap"]),
     modalityCaps: TaskModalityCapsSchema.optional(),
+    intent: TaskIntentSchema.optional(),
     reason: z
       .enum([
         "compressed_review",
@@ -65,7 +64,7 @@ export const TaskSchema = z
     example: {
       id: "123e4567-e89b-12d3-a456-426614174004",
       type: "lesson",
-      topicIds: ["123e4567-e89b-12d3-a456-426614174000"],
+      skillIds: ["123e4567-e89b-12d3-a456-426614174000"],
       estimatedMinutes: 5,
       xpValue: 20,
       modalities: ["tap", "voice"],
@@ -77,12 +76,12 @@ export const TaskSchema = z
 export const PlanRequestSchema = z
   .object({
     studentId: z.string().uuid().optional(),
-    max: z.number().int().min(1).max(10).default(5).openapi({
+    max: z.coerce.number().int().min(1).max(10).default(5).openapi({
       description: "Maximum number of tasks to return",
       example: 5,
     }),
-    includeSpeedDrills: z.boolean().default(true),
-    includeDiagnostic: z.boolean().default(false),
+    includeSpeedDrills: z.coerce.boolean().default(true),
+    includeDiagnostic: z.coerce.boolean().default(false),
   })
   .openapi({
     description: "Task planning request",
@@ -105,7 +104,7 @@ export const PlanResponseSchema = z
   .object({
     tasks: z.array(TaskSchema),
     stats: PlanStatsSchema,
-    studentStates: z.array(StudentTopicStateSchema).optional(),
+    studentStates: z.array(StudentSkillStateSchema).optional(),
     motivation: z
       .object({
         xpTarget: z.number().int().min(0),

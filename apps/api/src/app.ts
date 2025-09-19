@@ -2,13 +2,13 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { auth } from "@repo/auth";
 import { apiReference } from "@scalar/hono-api-reference";
-import evidenceRoutes from "./routes/evidence";
-import planRoutes from "./routes/plan";
 import contentRoutes from "./routes/content";
 import diagnosticRoutes from "./routes/diagnostic";
+import evidenceRoutes from "./routes/evidence";
+import motivationRoutes from "./routes/motivation";
+import planRoutes from "./routes/plan";
 import profileRoutes from "./routes/profile";
 import reportsRoutes from "./routes/reports";
-import motivationRoutes from "./routes/motivation";
 
 export const app = new OpenAPIHono();
 

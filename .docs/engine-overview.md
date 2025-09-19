@@ -1,64 +1,49 @@
-# Learning Engine & Motivation Platform — 2024 Learning-Science Refresh
+# Learning Engine & Motivation Platform — 2025 Refresh
 
-## Module layout
-- `packages/engine/src/plan.ts` — computes daily playlists by blending spaced review, hole-filling backtracks, frontier lessons, diagnostics, and speed reps. Tasks now target *skills* and surface the exact instructional experience that should fire.
-- `packages/engine/src/memory.ts` — updates skill memory with reps, strength, stability, expected latency, and retention probability (`P(365d)`). Reps increment fractional credit for encompassing skills (positive or negative weight) and log experience usage.
-- `packages/engine/src/evidence.ts` — ingests evidence batches (accuracy + latency), fans fractional reps to encompassing skills, updates aggregates, and flags hole-filling prerequisites whenever accuracy drops.
-- `packages/engine/src/motivation.ts` — streaks, rewards, joy breaks, and time-back ledger (unchanged API, enhanced metrics wiring).
-- `packages/engine/src/diagnostic.ts` — adaptive probe queue keyed by skill IDs.
-- `packages/engine/src/profile.ts` — assembles dashboards with mastery, due skills, streaks, check-chart progress, and latest plan snapshot.
-- `packages/engine/src/report.ts` — weekly digest builder summarising XP, minutes, highlights, and reteach actions per skill cluster.
-- `packages/engine/src/data.ts` — in-memory fallback store (skills, skill states, aggregates, motivation); persistence hooks remain ready for DB wiring.
+## Modules
+- `packages/engine/src/plan.ts` — builds daily playlists from skill mastery, XP goals, and spacing; selects appropriate task templates (`learn`, `practice`, `review`, `quick_check`, `fluency`).
+- `packages/engine/src/memory.ts` — updates mastery, spacing intervals, and template tallies after each attempt.
+- `packages/engine/src/evidence.ts` — ingests evidence payloads, awards template XP, unlocks stickers, logs achievements.
+- `packages/engine/src/motivation.ts` — tracks daily/weekly XP goals, sticker rewards, and optional joy breaks.
+- `packages/engine/src/data.ts` — persistence boundary: uses Kysely when `DATABASE_URL` is present and rich in-memory seeds when it is not.
+- `packages/engine/src/profile.ts` — surfaces progress snapshots (mastery, XP progress, sticker unlocks).
+- `packages/engine/src/report.ts` — weekly digest with XP, minutes-on-task, suggested actions.
 
-## Updated data model
-### Subject → Course → Lesson → Skill hierarchy
-- **Subject** (`seedSubjects`) groups a domain (e.g., Foundational Literacy, Foundational Math).
-- **Course** (`seedCourses`) denotes grade-band pathways (PreK Foundations, Kindergarten Core, etc.).
-- **Lesson** (`seedLessons`) bundles related skills with estimated time and focus statements.
-- **Skill** (`seedSkills`) is the atomic practice target. Each skill lists:
-  - `prerequisites`: AND/OR gated dependencies on other skills.
-  - `encompassing`: weighted relations (positive = fractional reps awarded; negative = fractional penalty when errors occur).
-  - `stageCode`, `gradeBand`, `expectedTimeSeconds`, and experience hooks.
+## Skill-first data model
+- **Skill** — atomic node with prerequisites, interference tags, stage code, expected seconds, check-chart tags.
+- **SkillTaskTemplate** — micro-lesson definition: `{ intent, xpAward, estimatedMinutes, modalities, steps[], metadata }`.
+  - Step kinds: `instruction`, `example`, `guided_practice`, `practice`, `prompt`, `reflection`.
+  - Steps optionally include `items` for practice/quick checks and `exitAfterConsecutiveCorrect` for mastery rules.
+- **StudentSkillState** — mastery, stability, due dates, `taskTemplateTallies`, retention probability.
+- **Motivation** — XP tracks (daily/weekly), sticker rewards, streak, optional joy breaks.
 
-Knowledge points stay mapped to skills (`skillId`) and own worked examples, reteach scripts, and practice item IDs.
+## Planning loop
+1. Pull the skill graph (from Postgres or the seed set) and learner skill states.
+2. Classify reasons (`frontier`, `struggling_support`, `compressed_review`, `speed_drill`, `diagnostic`).
+3. Map reasons to template intents and choose templated micro-tasks.
+4. Emit tasks with template IDs, XP award, modality hints, estimated minutes, and metadata (`primarySkillId`, `primarySkillTitle`, latency targets, etc.).
+5. Alternate domains (math ↔ reading) while respecting interference groups.
+6. Persist updates back to Postgres when available; otherwise refresh the in-memory map so subsequent calls see the new state.
 
-### Experiences & modalities
-- `seedKnowledgePointExperiences` define multimodal delivery variants per skill (e.g., manipulative play, storytelling, fluency loop, challenge). Each experience carries delivery kind, sensory tags, modalities, and associated practice activities.
-- `Task.experienceIds` mirrors the chosen experiences so clients can render the correct flow.
+## Evidence & XP
+- `submitEvidence` updates mastery and stability, increments XP using template `xpAward`, and unlocks stickers when thresholds are reached (25, 50, 200 XP).
+- Metadata records template IDs and intent for analytics.
 
-### Repetitions & retention
-- Every evidence event increments the skill’s `total reps`, `success reps`, and updates retention probability over a 365-day horizon (stored on the student skill state).
-- Fractional reps propagate through encompassing relationships (e.g., +0.4 for aligned skill, −0.2 if errors signal interference).
-- Mastery is defined as a ≥0.95 retention probability at 365 days; the engine never “locks” mastery: decay continues and spaced reps regenerate when needed.
-
-### Hole-filling
-- When accuracy drops or negative fractional reps accrue, the planner injects prerequisite experiences tagged `hole_fill` so students shore up missing fundamentals before reattempting frontier lessons.
-
-### Student state & aggregates
-- `StudentSkillState` now stores `skillId`, `experienceTallies`, rep counts, stability, strength, average latency, `retentionProbability365`, and running streak flags.
-- `StudentStats` tracks `skillsCompleted`, streaks, XP, minutes, and weekly XP timeline.
-- Engine aggregates maintain running means/standard deviations per skill segmented by demographic slices (grade, gender) to inform future adaptations.
+## Motivation summary
+- Daily goal (default 50 XP) and weekly goal (150 XP) live on the student profile and can be changed per learner.
+- Summary API returns XP progress, streak data, sticker unlocks, available joy breaks, and seeded league/squad records when Postgres is not configured.
+- Leagues/quests are kept intentionally lightweight in seeds so tests and demos have deterministic data.
 
 ## API surface
-- `GET /api/plan` → skill-centric tasks (lesson/review/diagnostic/speed) with modality and experience metadata, plus new stats (`dueSkills`, `overdueSkills`, `strugglingSkills`).
-- `POST /api/evidence` → accepts `skillId` evidence events, updates reps, retention, aggregates, and achievements.
-- `GET /api/content/experiences` → exposes experience catalog for authoring and clients.
-- `GET /api/content/topic/:id` now returns `{ topic: skill, knowledgePoints, experiences }` for backward compatibility.
-- Remaining endpoints (`/motivation`, `/profile`, `/report`, `/diagnostic`) continue to function with skill-aware identifiers.
+- `GET /api/plan` — skill tasks with template intent, XP, estimated minutes, and metadata (primary skill, latency targets).
+- `POST /api/evidence` — logs events, updates mastery, awards XP, updates skill metrics.
+- `GET /api/content/skill/:id` — returns `{ skill, taskTemplates }` from Postgres or seeds.
+- `GET /api/motivation/summary` — XP goals, stickers, joy breaks, and seeded league/quest data.
 
-## Learning-science alignment
-- **Sequencing**: Subject → Course → Lesson → Skill hierarchy clarifies scope and enables playlist assembly in meaningful chunks.
-- **Prerequisite integrity**: AND/OR prerequisite gating and hole-filling logic ensure gaps surface immediately.
-- **Retrieval & spacing**: Reps drive schedule spacing; experiences rotate modalities so recall sticks across sensory channels.
-- **Positive/negative transfer**: Encompassing relations with signed weights award or subtract reps to capture interference.
-- **Fluency**: Latency and speed-factor thresholds remain central; speed drills trigger when retention is high but response time lags.
-- **Analytics**: Aggregated means/standard deviations per skill and demographic ready the system for benchmarking and adaptive scaling.
+## Implementation checklist
+1. Replace auto-generated template text with authored scripts, manipulatives, and practice items.
+2. Configure spacing intervals per skill or stage.
+3. Extend reporting to surface intent-specific mastery (e.g., how often quick checks fail).
+4. Add optional quests or joy breaks after the base experience is validated.
 
-## Next implementation steps
-1. **Persistence** — wire skills, lessons, experiences, and student states into Postgres (tables already scaffolded; migrate once schema stabilises).
-2. **CMS authoring** — connect experience definitions and lesson scripts to the content authoring UI.
-3. **Adaptive weighting** — tune encompassing weights using collected accuracy/latency data to better model positive vs. negative transfer.
-4. **Reporting** — surface retention probability, rep streaks, and experience tallies in coach dashboards.
-5. **Assessment expansion** — add skill-level probes for reading diagnostics, now that pipeline accepts `skillId`.
-
-Everything remains type-safe end to end via the updated schemas in `@repo/schemas`.
+Everything is type-safe end-to-end through `@repo/schemas`. With knowledge-point debt gone, the skill task template is the contract for plan, evidence, content, and analytics.

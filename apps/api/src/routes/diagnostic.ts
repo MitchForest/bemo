@@ -1,12 +1,12 @@
-import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { auth } from "@repo/auth";
+import { getNextDiagnosticProbe, submitDiagnosticAnswer } from "@repo/engine";
 import {
-  DiagnosticNextRequestSchema,
-  DiagnosticNextResponseSchema,
   DiagnosticAnswerRequestSchema,
   DiagnosticAnswerResponseSchema,
+  DiagnosticNextRequestSchema,
+  DiagnosticNextResponseSchema,
 } from "@repo/schemas";
-import { getNextDiagnosticProbe, submitDiagnosticAnswer } from "@repo/engine";
 
 const app = new OpenAPIHono();
 

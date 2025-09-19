@@ -1,14 +1,16 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
+process.env.DATABASE_URL = "";
+
 import {
-  getMotivationSummary,
-  getMotivationLeagues,
-  joinMotivationSquad,
-  getMotivationQuests,
-  updateQuestTaskProgress,
   claimQuestReward,
-  getTimeBackLedgerEntries,
   claimTimeBackEntry,
   getMotivationDigest,
+  getMotivationLeagues,
+  getMotivationQuests,
+  getMotivationSummary,
+  getTimeBackLedgerEntries,
+  joinMotivationSquad,
+  updateQuestTaskProgress,
 } from "../index";
 
 const STUDENT_ID = "44444444-4444-4444-8444-444444444444";
@@ -46,7 +48,9 @@ test("quests update and claim add time-back", async () => {
     updatedQuests = await updateQuestTaskProgress(STUDENT_ID, quest.id, task.id, 1, true);
   }
   const updatedQuest = updatedQuests.find((item) => item.id === quest.id);
-  updatedQuest?.tasks.forEach((task) => expect(task.completed).toBe(true));
+  for (const task of updatedQuest?.tasks ?? []) {
+    expect(task.completed).toBe(true);
+  }
 
   const claimed = await claimQuestReward(STUDENT_ID, quest.id);
   expect(claimed?.status === "completed" || claimed?.status === "claimed").toBe(true);

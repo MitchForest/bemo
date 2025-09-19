@@ -1,10 +1,9 @@
 "use client";
 
-import { HeartHandshake, Trophy, CalendarHeart, Star } from "lucide-react";
+import { CalendarHeart, HeartHandshake, Star, Trophy } from "lucide-react";
 
 import type { WeeklyReport } from "@repo/schemas";
 
-import { useParentDashboardData } from "@/hooks/use-parent-dashboard-data";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useParentDashboardData } from "@/hooks/use-parent-dashboard-data";
 import { cn } from "@/lib/utils";
 
 const toneIconMap = {
@@ -209,6 +209,9 @@ function deriveRecommendedRhythm(days: WeeklyReport["daily"]): string {
   return `${labels.join(" · ")} → ${minutes} minute sessions`;
 }
 
+const GRID_SKELETON_KEYS = ["first", "second", "third"] as const;
+const SIDEBAR_SKELETON_KEYS = ["primary", "secondary"] as const;
+
 function ParentDashboardSkeleton() {
   return (
     <div className="space-y-8 animate-pulse">
@@ -225,14 +228,17 @@ function ParentDashboardSkeleton() {
           <div className="h-6 w-40 rounded-full bg-muted" />
           <div className="mt-4 h-24 rounded-2xl bg-muted/60" />
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {[...Array(3)].map((_, idx) => (
-              <div key={idx} className="h-20 rounded-2xl bg-muted/50" />
+            {GRID_SKELETON_KEYS.map((key) => (
+              <div key={`skeleton-grid-${key}`} className="h-20 rounded-2xl bg-muted/50" />
             ))}
           </div>
         </div>
         <div className="space-y-6">
-          {[...Array(2)].map((_, idx) => (
-            <div key={idx} className="rounded-3xl border border-border/60 bg-white/70 p-6">
+          {SIDEBAR_SKELETON_KEYS.map((key) => (
+            <div
+              key={`skeleton-sidebar-${key}`}
+              className="rounded-3xl border border-border/60 bg-white/70 p-6"
+            >
               <div className="h-6 w-32 rounded-full bg-muted" />
               <div className="mt-4 h-24 rounded-2xl bg-muted/60" />
             </div>

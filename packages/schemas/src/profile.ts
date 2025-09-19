@@ -1,9 +1,9 @@
 import { z } from "@hono/zod-openapi";
 import { DomainSchema } from "./common";
-import { StudentProfileSchema, StudentSkillStateSchema } from "./student";
 import { CheckChartSchema } from "./content";
-import { TaskSchema, PlanStatsSchema } from "./task";
 import { MotivationSummarySchema } from "./motivation";
+import { StudentProfileSchema, StudentSkillStateSchema } from "./student";
+import { PlanStatsSchema, TaskSchema } from "./task";
 
 export const MasterySummarySchema = z
   .object({

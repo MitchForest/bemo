@@ -1,8 +1,5 @@
 "use client";
 
-import * as React from "react";
-import dynamic from "next/dynamic";
-import { Building2, ShieldHalf, LineChart, Layers, Users2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +10,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useTeacherRoster } from "@/hooks/use-teacher-roster";
+import { Building2, Layers, LineChart, ShieldHalf, Users2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import * as React from "react";
 
 const organizationTree = [
   {
@@ -233,7 +233,7 @@ export function AdminDashboard() {
         <CardHeader>
           <CardTitle>Knowledge Graph Preview</CardTitle>
           <CardDescription>
-            Visualize prerequisite relationships across seeded reading and math topics.
+            Visualize prerequisite relationships across seeded reading and math skills.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -244,7 +244,15 @@ export function AdminDashboard() {
   );
 }
 
-function NodeRow({ node, depth }: { node: any; depth: number }) {
+interface Node {
+  icon: string;
+  name: string;
+  type: string;
+  count?: number;
+  children?: Node[];
+}
+
+function NodeRow({ node, depth }: { node: Node; depth: number }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between rounded-2xl bg-white/80 px-4 py-3">
@@ -263,7 +271,7 @@ function NodeRow({ node, depth }: { node: any; depth: number }) {
       </div>
       {node.children && node.children.length > 0 && (
         <div className="space-y-3 pl-6">
-          {node.children.map((child: any) => (
+          {node.children.map((child) => (
             <NodeRow key={child.name} node={child} depth={depth + 1} />
           ))}
         </div>
@@ -299,6 +307,8 @@ function HealthRow({
   );
 }
 
+const SKELETON_PLACEHOLDERS = ["first", "second", "third"] as const;
+
 function AdminDashboardSkeleton() {
   return (
     <div className="space-y-8 animate-pulse">
@@ -318,14 +328,17 @@ function AdminDashboardSkeleton() {
         <div className="rounded-3xl border border-border/60 bg-white/70 p-6">
           <div className="h-6 w-48 rounded-full bg-muted" />
           <div className="mt-4 space-y-3">
-            {[...Array(3)].map((_, idx) => (
-              <div key={idx} className="h-16 rounded-2xl bg-muted/60" />
+            {SKELETON_PLACEHOLDERS.map((key) => (
+              <div key={`skeleton-item-${key}`} className="h-16 rounded-2xl bg-muted/60" />
             ))}
           </div>
         </div>
         <div className="space-y-6">
-          {[...Array(3)].map((_, idx) => (
-            <div key={idx} className="rounded-3xl border border-border/60 bg-white/70 p-6">
+          {SKELETON_PLACEHOLDERS.map((key) => (
+            <div
+              key={`skeleton-card-${key}`}
+              className="rounded-3xl border border-border/60 bg-white/70 p-6"
+            >
               <div className="h-6 w-40 rounded-full bg-muted" />
               <div className="mt-4 h-16 rounded-2xl bg-muted/60" />
             </div>

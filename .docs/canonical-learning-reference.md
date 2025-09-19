@@ -1,104 +1,87 @@
 # Canonical Learning Model Reference
 
-## TODOs / Open Follow-ups
-- [ ] Update database migrations/seeds to persist subjects, courses, lessons, skills, and experience metadata (currently seed-only).
-- [ ] Sweep frontend usage of `topicIds` to ensure UI elements consume `skillIds` (knowledge graph, teacher journey cards, etc.).
-- [ ] Align API clients and docs (diagnostic, content, plan) with the new `skillId` terminology.
-- [ ] Expose skill metric snapshots (mean/σ accuracy & latency) through reporting endpoints or dashboards.
-- [ ] Extend evidence payloads/workflows to write aggregated skill metrics into analytics storage once DB is wired.
-- [ ] Remove transitional topic-based fields/routes once consumers migrate (no long-term backward compatibility debt).
+## Current State (March 2025)
+- **187 skills** spanning Pre‑K → Grade 2 (101 reading, 86 math) with explicit prerequisites, non‑interference tags, check‑chart statements, XP estimates.
+- **Skill task templates** automatically generated per skill:
+  - `learn`, `guided_practice`, `independent_practice`, `review_prompt`, `quick_check`, and `fluency` (for Grade 1+).
+  - Each template includes an intent, expected minutes, XP award, modalities, and a sequence of short steps.
+- **Motivation scaffolding**: Daily (50 XP) and weekly (200 XP) tracks with sticker rewards; no leagues or squads in the early-childhood loop.
+- **Seeds**: Database seeding writes subjects → courses → lessons → skills → templates. Assets, microgames, diagnostics, and check charts remain empty placeholders until authored.
 
----
+## Immediate Priorities
+1. **Author domain-specific content**
+   - Replace generated text with real scripts, manipulatives, and visuals for high-priority skill clusters.
+   - Add coaching notes, gestures, and culturally responsive examples.
+2. **Enrich practice items**
+   - Provide concrete item banks (2–5 items per practice step) with explanations and variation.
+3. **Populate review prompts**
+   - Define recommended intervals and caregiver language for each `review_prompt` template.
+4. **Fill motivation catalog**
+   - Add sticker art, badge assets, and optional joy breaks aligned with daily/weekly goals.
+5. **Build reporting surfaces**
+   - Map skill templates to check-chart statements and adult dashboards.
 
-## Hierarchy & Primitives
+## Core Primitives
+### Skill
+- Atomic learning target.
+- Carries: `title`, `domain`, `gradeBand`, `stageCode`, `expectedTimeSeconds`, `interferenceGroup`, `checkChartTags`, `prerequisites`.
+- Planner alternates domains and honours prerequisites + non‑interference.
 
-| Level   | Description | Key Schema / Seeds |
-|---------|-------------|--------------------|
-| **Subject** | Top-level track (e.g., Foundational Literacy, Foundational Math) containing multiple courses. | `SubjectSchema`, `seedSubjects`, `SUBJECT_IDS` |
-| **Course**  | Grade-band pathway inside a subject (PreK Foundations, Kindergarten Core). | `CourseSchema`, `seedCourses`, `COURSE_IDS` |
-| **Lesson**  | Teacher-facing bundle of skills that should be experienced together; includes estimated minutes and focus question. | `LessonSchema`, `seedLessons`, `LESSON_IDS` |
-| **Skill**   | Smallest adaptive unit the engine plans for and the student masters (was `Topic`). Skills track prerequisites, encompassing links, stage, grade band, time estimates. | `SkillSchema`, `seedSkills`, `SKILL_IDS` |
-| **Knowledge Point (KP)** | Objective-level breakdown inside a skill (2–4 per skill) with worked examples, reteach snippets, and practice item IDs. | `KnowledgePointSchema`, `seedKnowledgePoints`, `KNOWLEDGE_POINT_IDS` |
-| **Experience** | Concrete delivery variant for a KP (delivery kind, modalities, sensory tags, linked practice). | `KnowledgePointExperienceSchema`, `seedKnowledgePointExperiences` |
+### Skill Task Template
+Reusable micro‑lesson for a single skill.
 
-### Relationships
-- **Prerequisites**: Skill-level AND/OR requirements (`SkillPrerequisiteSchema`). Planner checks `prerequisitesMet` before surfacing frontier work.
-- **Encompassing**: Weighted relations between skills. Positive weights add fractional reps to encompassing skills on success; negative weights subtract reps on errors (captures interference / hole-filling needs).
-- **Lessons to Skills**: `Lesson.skillIds` enumerates the skills taught within the lesson; planner can group sequential tasks accordingly.
-- **Courses / Subjects**: Courses reference lessons; subjects reference courses, keeping long-term scope visible.
+| Field | Description |
+| ----- | ----------- |
+| `intent` | Instructional purpose (`learn`, `guided_practice`, `independent_practice`, `review_prompt`, `quick_check`, `fluency`). |
+| `xpAward` | XP granted on completion; fuels stickers and daily/weekly goals. |
+| `estimatedMinutes` | Expected seat time (1–3 minutes). |
+| `modalities` / `sensoryTags` | Input/output channel hints (voice, tap, manipulatives). |
+| `steps` | Ordered array of short moves. Each step captures `kind` (instruction, example, practice, prompt, reflection), `prompt`, optional `expectedResponse`, `hints`, and optional `items` (mini practice/check questions). |
+| `metadata` | Freeform (e.g., `{ recommendedIntervalDays: 3 }`). |
+
+#### Step Anatomy
+- **Instruction** – adult-facing narration.
+- **Example** – worked example for dual coding.
+- **Guided Practice** – “We do” with prompts.
+- **Practice** – learner attempt; may include `items` with exit rules (`exitAfterConsecutiveCorrect`).
+- **Prompt** – retrieval cue used for spaced review.
+- **Reflection** – simple affect check (thumbs, “How did that feel?”).
+
+### XP & Stickers
+- **Daily goal** (default 50 XP) and **weekly goal** (default 150 XP) stored on the student profile.
+- Completing a template grants its `xpAward`; reaching thresholds unlocks sticker rewards (`Sparkle Star`, `Rainbow Rocket`, `Galaxy Badge`).
+- Adults can set different goals per learner; planner surfaces XP progress in every task card.
 
 ## Learning Loop
-1. **Plan** (`plan.ts`)
-   - Pulls all skills (`seedSkills`) and learner states (`StudentSkillState`).
-   - Computes due set (spaced review) + frontier set (unseen/struggling skills) honoring prerequisites.
-   - Schedules tasks with mapped experiences (`experienceIds`, modalities, sensory tags) and rotated skill IDs.
-   - Injects hole-filling or speed drills based on retention and latency thresholds.
-   - Outputs stats: `dueSkills`, `overdueSkills`, `strugglingSkills`, `speedDrillOpportunities`, `compressionRatio`.
+1. **Plan** – engine proposes ~3 cards: “Learn something new”, “Practice what’s almost there”, “Quick review”. Each card:
+   - references a single skill
+   - lists the template intent (e.g., `learn`, `review_prompt`)
+   - shows time + XP reward.
+2. **Execute Template** – adult/learner follows 2–4 concise steps. No long-form media; rely on voice, simple manipulatives, and tap interactions.
+3. **Evidence & XP** – completion records mastery outcome, increments XP by `xpAward`, updates daily/weekly totals, and unlocks stickers when thresholds hit.
+4. **Spacing & Non-Interference** – planner schedules review prompts after 3 days, alternates domains, and avoids skills in the same interference group back-to-back.
+5. **Progress Tracking** – check charts and dashboards key off `skillId`, `intent`, and streaks; no knowledge-point aliases.
 
-2. **Delivery**
-   - Lessons & reviews use experiences to vary modality (manipulative, storytelling, movement, fluency loop, etc.).
-   - UI launches tasks by reading `skillIds`, `knowledgePointIds`, `experienceIds`.
+## Example: “Count objects to 5”
+- **Learn** (3 minutes / 25 XP):
+  1. Instruction – “Let’s count the dots together.”
+  2. Example – adult models counting five blocks.
+  3. Guided practice – learner taps counters with the adult.
+  4. Reflection – thumbs up/sideways check-in.
+- **Independent Practice** (2 minutes / 18 XP): two prompts with `exitAfterConsecutiveCorrect = 2`.
+- **Review Prompt** (1 minute / 12 XP): quick oral retrieval scheduled every 3 days.
+- **Quick Check** (1 minute / 10 XP): single “Show me 5” verification; miss slides the skill back into guided practice.
 
-3. **Evidence** (`evidence.ts`)
-   - Events include `skillId`, `result`, `latencyMs`, `experienceId`.
-   - Updates skill state via `memory.ts` (strength/stability) and logs experience tallies.
-   - Propagates fractional reps to encompassing skills (positive/negative weights).
-   - Records aggregate metrics (mean / σ accuracy, latency) globally and segmented by learner grade/gender.
+## Data Model Summary
+- `skills` table → canonical nodes.
+- `skill_task_templates` table → JSON definition of steps + XP + modalities.
+- All downstream services (plan, evidence, content API) consume these templates; there is no knowledge-point shim or topic alias.
 
-4. **Memory & Mastery** (`memory.ts`)
-   - Maintains `strength`, `stability`, `repNum`, `avgLatencyMs`, `speedFactor`, `experienceTallies`.
-   - Computes due interval from success, latency penalty, and weight.
-   - Calculates `retentionProbability365` using an exponential decay model (half-life ≈ stability × 26 days).
-   - Mastery is dynamic: threshold = retention probability ≥ 0.95 for 365 days; decay reintroduces review.
+## Authoring Playbook
+1. Duplicate an existing template for the target skill group.
+2. Replace prompts with domain-specific language, visuals, and manipulatives.
+3. Ensure practice items include explanations and success criteria.
+4. Set XP/estimated minutes realistically (2–4 minutes per template).
+5. Publish via `seedSkillTaskTemplates` (and future CMS) and run `bun run typecheck`.
 
-5. **Feedback & Reporting**
-   - `profile.ts` summarises mastery by domain (mean strength, due/struggling counts), due skill queue, plan snapshot, check charts (now keyed by `skillIds`).
-   - `report.ts` builds weekly digest (XP/minutes totals, highlights, coach actions per skill).
-   - Motivation module unaffected but consumes skill identifiers when referencing tasks.
-
-## Student Data Model
-- **StudentSkillState**
-  - `skillId`, `strength`, `stability`, `repNum`, `dueAt`, `avgLatencyMs`, `speedFactor`, `experienceTallies`, `retentionProbability365`.
-  - `strugglingFlag` toggled when strength < 0.45 or latest success < 0.4.
-  - `overdueDays` tracks how far past due the repetition is.
-- **StudentStats**
-  - `skillsCompleted`, `speedDrillsCompleted`, `totalXp`, `minutes`, streaks, and rolling 14-day XP timeline.
-- **Aggregates**
-  - `recordSkillMetricSample` accumulates accuracy/latency metrics per skill, by gender, by grade.
-  - `getSkillMetricSnapshot` returns means/standard deviations for analytics (currently in-memory; TODO: persist via DB/export).
-
-## Content & API Surface
-- **Curriculum API (`/api/content/...`)**
-  - `GET /content/experiences` → list experiences.
-  - `GET /content/topic/:id` (back-compat) returns `{ topic: skill, knowledgePoints, experiences }`.
-  - Practice activities now expose `skillId` alongside legacy `topicId` for transitional support.
-- **Plan API (`/api/plan`)**
-  - Tasks include `skillIds`, `experienceIds`, sensory tags, reason, and modality caps.
-- **Evidence API (`/api/evidence`)**
-  - Expects `skillId` per event.
-- **Diagnostic API (`/api/diagnostic/*`)**
-  - Query/body now accept `skillId`; responses return probes keyed by `skillId` and session metadata listing `activeSkillIds`.
-
-## Motivation & Check Charts
-- Check chart statements reference `skillIds`; thresholds include accuracy, consecutive passes, optional latency caps.
-- Rewards, streaks, joy breaks continue to operate unchanged but plan/motivation stats now use skill metrics.
-
-## Analytics & Monitoring
-- Skill metric snapshot data is ready for dashboards or anomaly detection.
-- Profile & report modules utilise `skillStates` to derive mastery, due counts, and reteach prompts.
-- TODO: expose aggregated metrics via API / telemetry sink.
-
-## Terminology Quick Reference
-- **Skill** (previously “topic”): atomic adaptive unit.
-- **Experience**: a multimodal lesson/practice variant tied to a knowledge point.
-- **Repetition (rep)**: every evidence event increments reps; fractional credit flows through encompassing relations.
-- **Retention Probability**: estimated likelihood (%) the learner retains the skill after 365 days; mastery threshold at 95%.
-- **Hole Filling**: planner injects prerequisite experiences (tagged `hole_fill`) when errors or negative transfer emerge.
-
-## Data Flow Summary
-```
-Planner (skills) → Task (skillIds, experienceIds) → UI Experience → Evidence (skillId, result, latency) →
-Memory Update (strength/stability/retention) → Aggregates (mean/σ) → Profile/Report (skill-centric views)
-```
-
-Use this document as the canonical source when evolving curriculum content, adaptive behaviours, or analytics.
+Use this document as the living source of truth for how skills, task templates, XP, and stickers interlock. Once domain authors replace the generated text, we can roll the experience into pilots.

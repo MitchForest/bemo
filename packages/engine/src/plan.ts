@@ -1,21 +1,17 @@
+import { getDiagnosticProbesBySkill, getTaskTemplatesBySkill } from "@repo/curriculum";
 import type {
   PlanRequest,
   PlanStats,
+  Skill,
+  SkillTaskTemplate,
   StudentSkillState,
   Task,
-  Skill,
-  KnowledgePointExperience,
 } from "@repo/schemas";
 import {
-  getKnowledgePointsBySkill,
-  getDiagnosticProbesBySkill,
-  getExperiencesForSkill,
-  seedSkills,
-} from "@repo/curriculum";
-import {
   createSyntheticTaskId,
-  loadStudentSkillStates,
+  getAllSkills,
   loadStudentProfile,
+  loadStudentSkillStates,
   prerequisitesMet,
 } from "./data";
 import { isMastered } from "./memory";
@@ -35,7 +31,7 @@ export interface PlanComputationResult {
 export async function getPlan(
   params: PlanRequest & { studentId: string },
 ): Promise<PlanComputationResult> {
-  const skills = seedSkills;
+  const skills = await getAllSkills();
   const skillMap = new Map(skills.map((skill) => [skill.id, skill]));
   const states = await loadStudentSkillStates(params.studentId, skills);
   const stateMap = new Map(states.map((state) => [state.skillId, state]));
@@ -54,21 +50,21 @@ export async function getPlan(
 
   const addTask = (task: Task) => {
     tasks.push(task);
-    for (const skillId of task.topicIds) {
+    for (const skillId of task.skillIds) {
       scheduledSkillIds.add(skillId);
     }
   };
 
   const maxTasks = params.max ?? 5;
 
-  // 1. Prioritize math review and struggling topics (80/20 focus)
+  // 1. Prioritize math review and struggling skills (80/20 focus)
   for (const state of dueStates) {
     if (tasks.length >= maxTasks) break;
     if (scheduledSkillIds.has(state.skillId)) continue;
-    const topic = skillMap.get(state.skillId);
-    if (!topic) continue;
+    const skill = skillMap.get(state.skillId);
+    if (!skill) continue;
 
-    const reviewTask = buildReviewTask(topic, state, skillMap, now);
+    const reviewTask = buildReviewTask(skill, state, skillMap, now);
     addTask(reviewTask);
   }
 
@@ -125,40 +121,41 @@ export async function getPlan(
 }
 
 function buildReviewTask(
-  topic: Skill,
+  skill: Skill,
   state: StudentSkillState,
   skillMap: Map<string, Skill>,
   now: Date,
 ): Task {
-  const knowledgePointIds = getKnowledgePointsBySkill(topic.id).map((kp) => kp.id);
-  const supplementalSkills = collectEncompassedSkills(topic, skillMap);
-  const targetSkillIds = [topic.id, ...supplementalSkills];
-  const estimatedMinutes = estimateMinutes(topic.expectedTimeSeconds);
+  const supplementalSkills = collectEncompassedSkills(skill, skillMap);
+  const targetSkillIds = [skill.id, ...supplementalSkills];
   const reason =
     state.strugglingFlag || state.strength < STRUGGLE_STRENGTH_THRESHOLD
       ? "struggling_support"
       : "compressed_review";
-  const xpValue = Math.round(estimatedMinutes * (reason === "struggling_support" ? 13 : 11));
-  const fallbackModalities = defaultModalities(topic.domain, "review");
-  const experienceContext = resolveExperienceContext(topic, reason, state, fallbackModalities);
-  const experienceIds = experienceContext.experiences.map((experience) => experience.id);
+  const fallbackModalities = defaultModalities(skill.domain, "review");
+  const taskTemplateContext = resolveTaskTemplateContext(skill, reason, fallbackModalities);
+  const estimatedMinutes =
+    taskTemplateContext.estimatedMinutes ?? estimateMinutes(skill.expectedTimeSeconds);
+  const xpValue =
+    taskTemplateContext.xpAward > 0
+      ? taskTemplateContext.xpAward
+      : Math.round(estimatedMinutes * (reason === "struggling_support" ? 13 : 11));
 
   return {
     id: createSyntheticTaskId(),
     type: "review",
-    topicIds: targetSkillIds,
     skillIds: targetSkillIds,
-    knowledgePointIds,
+    taskTemplateIds: taskTemplateContext.taskTemplateIds,
     estimatedMinutes,
-    experienceIds,
     xpValue,
-    modalities: experienceContext.modalities,
-    modalityCaps: buildModalityCaps(topic, "review"),
+    modalities: taskTemplateContext.modalities,
+    modalityCaps: buildModalityCaps(skill, "review"),
     reason,
+    intent: taskTemplateContext.intent,
     priority: computePriority(state),
     scheduledAt: now.toISOString(),
     dueAt: state.dueAt,
-    tags: [topic.domain, "review"],
+    tags: [skill.domain, "review"],
     motivation:
       reason === "struggling_support"
         ? { xpBonus: 10, streakImpact: { type: "maintain" } }
@@ -168,44 +165,51 @@ function buildReviewTask(
       strength: state.strength,
       dueAt: state.dueAt,
       overdueDays: state.overdueDays,
-      experienceIds,
-      sensoryTags: experienceContext.sensoryTags,
+      taskTemplateIds: taskTemplateContext.taskTemplateIds,
+      sensoryTags: taskTemplateContext.sensoryTags,
+      intent: taskTemplateContext.intent,
+      primarySkillId: skill.id,
+      primarySkillTitle: skill.title,
     },
   };
 }
 
-function buildLessonTask(topic: Skill, state: StudentSkillState | undefined, now: Date): Task {
-  const knowledgePointIds = getKnowledgePointsBySkill(topic.id).map((kp) => kp.id);
-  const supplementalSkills = collectEncompassedSkills(topic);
-  const targetSkillIds = [topic.id, ...supplementalSkills];
-  const estimatedMinutes = estimateMinutes(topic.expectedTimeSeconds);
+function buildLessonTask(skill: Skill, state: StudentSkillState | undefined, now: Date): Task {
+  const supplementalSkills = collectEncompassedSkills(skill);
+  const targetSkillIds = [skill.id, ...supplementalSkills];
   const reason =
     state && state.strength < STRUGGLE_STRENGTH_THRESHOLD ? "struggling_support" : "frontier";
-  const xpValue = Math.round(estimatedMinutes * (reason === "struggling_support" ? 12 : 11));
-  const fallbackModalities = defaultModalities(topic.domain, "lesson");
-  const experienceContext = resolveExperienceContext(topic, reason, state, fallbackModalities);
-  const experienceIds = experienceContext.experiences.map((experience) => experience.id);
+  const fallbackModalities = defaultModalities(skill.domain, "lesson");
+  const taskTemplateContext = resolveTaskTemplateContext(skill, reason, fallbackModalities);
+  const estimatedMinutes =
+    taskTemplateContext.estimatedMinutes ?? estimateMinutes(skill.expectedTimeSeconds);
+  const xpValue =
+    taskTemplateContext.xpAward > 0
+      ? taskTemplateContext.xpAward
+      : Math.round(estimatedMinutes * (reason === "struggling_support" ? 12 : 11));
 
   return {
     id: createSyntheticTaskId(),
     type: "lesson",
-    topicIds: targetSkillIds,
     skillIds: targetSkillIds,
-    knowledgePointIds,
+    taskTemplateIds: taskTemplateContext.taskTemplateIds,
     estimatedMinutes,
-    experienceIds,
     xpValue,
-    modalities: experienceContext.modalities,
-    modalityCaps: buildModalityCaps(topic, "lesson"),
+    modalities: taskTemplateContext.modalities,
+    modalityCaps: buildModalityCaps(skill, "lesson"),
     reason,
+    intent: taskTemplateContext.intent,
     priority: state ? computePriority(state) : 3,
     scheduledAt: now.toISOString(),
-    tags: [topic.domain, "frontier"],
+    tags: [skill.domain, "frontier"],
     motivation: reason === "frontier" ? { xpBonus: 6 } : { xpBonus: 8 },
     metadata: {
-      expectedTimeSeconds: topic.expectedTimeSeconds,
-      experienceIds,
-      sensoryTags: experienceContext.sensoryTags,
+      expectedTimeSeconds: skill.expectedTimeSeconds,
+      taskTemplateIds: taskTemplateContext.taskTemplateIds,
+      sensoryTags: taskTemplateContext.sensoryTags,
+      intent: taskTemplateContext.intent,
+      primarySkillId: skill.id,
+      primarySkillTitle: skill.title,
     },
   };
 }
@@ -229,20 +233,22 @@ function pickSpeedDrillTask(
   for (const candidate of candidates) {
     const skill = skillMap.get(candidate.skillId);
     if (!skill) continue;
-    const knowledgePointIds = getKnowledgePointsBySkill(skill.id).map((kp) => kp.id);
-    const estimatedMinutes = Math.min(5, Math.max(2, Math.round(skill.expectedTimeSeconds / 120)));
+    const templateContext = resolveTaskTemplateContext(skill, "speed_drill", ["tap"]);
+    const estimatedMinutes =
+      templateContext.estimatedMinutes ??
+      Math.min(5, Math.max(2, Math.round(skill.expectedTimeSeconds / 120)));
+    const xpValue = templateContext.xpAward > 0 ? templateContext.xpAward : estimatedMinutes * 9;
     return {
       id: createSyntheticTaskId(),
       type: "speed_drill",
-      topicIds: [skill.id],
       skillIds: [skill.id],
-      knowledgePointIds,
       estimatedMinutes,
-      experienceIds: [],
-      xpValue: estimatedMinutes * 9,
-      modalities: ["tap"],
+      taskTemplateIds: templateContext.taskTemplateIds,
+      xpValue,
+      modalities: templateContext.modalities.length ? templateContext.modalities : ["tap"],
       modalityCaps: { recommendedDevice: "touch" as const },
       reason: "speed_drill",
+      intent: templateContext.intent,
       priority: 4,
       scheduledAt: now.toISOString(),
       tags: [skill.domain, "speed"],
@@ -250,6 +256,10 @@ function pickSpeedDrillTask(
       metadata: {
         targetLatencyMs: SPEED_LATENCY_THRESHOLD_MS,
         avgLatencyMs: candidate.avgLatencyMs,
+        taskTemplateIds: templateContext.taskTemplateIds,
+        intent: templateContext.intent,
+        primarySkillId: skill.id,
+        primarySkillTitle: skill.title,
       },
     };
   }
@@ -275,25 +285,35 @@ function buildDiagnosticTask(
   const probes = getDiagnosticProbesBySkill(mathFrontier.id);
   if (!probes.length) return undefined;
 
+  const fallbackModalities = defaultModalities(mathFrontier.domain, "diagnostic");
+  const templateContext = resolveTaskTemplateContext(
+    mathFrontier,
+    "diagnostic",
+    fallbackModalities,
+  );
+  const estimatedMinutes = templateContext.estimatedMinutes ?? 4;
+  const xpValue = templateContext.xpAward > 0 ? templateContext.xpAward : 15;
+
   return {
     id: createSyntheticTaskId(),
     type: "diagnostic",
-    topicIds: [mathFrontier.id],
     skillIds: [mathFrontier.id],
-    knowledgePointIds: probes
-      .map((probe) => probe.knowledgePointId)
-      .filter((id): id is string => Boolean(id)),
-    estimatedMinutes: 4,
-    experienceIds: [],
-    xpValue: 15,
-    modalities: defaultModalities(mathFrontier.domain, "diagnostic"),
+    taskTemplateIds: templateContext.taskTemplateIds,
+    estimatedMinutes,
+    xpValue,
+    modalities: templateContext.modalities,
     modalityCaps: { recommendedDevice: "touch" as const },
     reason: "diagnostic",
+    intent: templateContext.intent,
     priority: 3,
     scheduledAt: now.toISOString(),
     tags: ["math", "diagnostic"],
     metadata: {
       probes: probes.map((probe) => ({ probeId: probe.id, difficulty: probe.difficulty })),
+      taskTemplateIds: templateContext.taskTemplateIds,
+      intent: templateContext.intent,
+      primarySkillId: mathFrontier.id,
+      primarySkillTitle: mathFrontier.title,
     },
   };
 }
@@ -401,88 +421,84 @@ function collectEncompassedSkills(skill: Skill, skillMap?: Map<string, Skill>): 
   return ids;
 }
 
-function resolveExperienceContext(
-  topic: Skill,
+function resolveTaskTemplateContext(
+  skill: Skill,
   reason: Task["reason"] | undefined,
-  state: StudentSkillState | undefined,
   fallbackModalities: Task["modalities"],
 ): {
-  experiences: KnowledgePointExperience[];
+  taskTemplateIds: string[];
   modalities: Task["modalities"];
   sensoryTags: string[];
+  xpAward: number;
+  estimatedMinutes?: number;
+  intent?: SkillTaskTemplate["intent"];
 } {
-  const available = getExperiencesForSkill(topic.id);
-  if (available.length === 0) {
-    return { experiences: [], modalities: fallbackModalities, sensoryTags: [] };
+  const templates = getTaskTemplatesBySkill(skill.id);
+  if (templates.length === 0) {
+    return {
+      taskTemplateIds: [],
+      modalities: fallbackModalities,
+      sensoryTags: [],
+      xpAward: 0,
+    };
   }
 
-  const targetPurposes = determineTargetPurposes(reason);
-  const pool = filterExperiencesByPurpose(available, targetPurposes);
-  const tallies = state?.experienceTallies ?? {};
-  const selected = selectExperiencesByTallies(pool, tallies);
-  if (selected.length === 0) {
-    return { experiences: [], modalities: fallbackModalities, sensoryTags: [] };
-  }
-
-  const modalities = unique(
-    selected.flatMap((experience) => experience.modalities ?? []).filter(Boolean),
-  ) as Task["modalities"];
-  const sensoryTags = unique(selected.flatMap((experience) => experience.sensoryTags ?? []));
+  const filtered = filterTaskTemplatesByReason(templates, reason);
+  const chosen = filtered.length > 0 ? filtered : templates;
+  const primary = chosen[0];
+  const taskTemplateIds = chosen.map((template) => template.id);
+  const allModalities = chosen.flatMap((template) => template.modalities ?? []);
+  const modalities = unique(allModalities) as Task["modalities"];
+  const sensoryTags = unique(chosen.flatMap((template) => template.sensoryTags ?? []));
 
   return {
-    experiences: selected,
+    taskTemplateIds,
     modalities: modalities.length > 0 ? modalities : fallbackModalities,
     sensoryTags,
+    xpAward: primary?.xpAward ?? 0,
+    estimatedMinutes: primary?.estimatedMinutes,
+    intent: primary?.intent,
   };
 }
 
-function determineTargetPurposes(reason: Task["reason"] | undefined): string[] {
+function filterTaskTemplatesByReason(
+  templates: SkillTaskTemplate[],
+  reason: Task["reason"] | undefined,
+): SkillTaskTemplate[] {
+  if (!reason) {
+    return templates;
+  }
+
+  const targetIntents = new Set<SkillTaskTemplate["intent"]>();
   switch (reason) {
     case "frontier":
-      return ["entry"];
-    case "struggling_support":
-      return ["reteach"];
+      targetIntents.add("learn");
+      break;
     case "compressed_review":
-      return ["fluency", "reteach"];
+      targetIntents.add("review_prompt");
+      targetIntents.add("independent_practice");
+      targetIntents.add("quick_check");
+      break;
+    case "struggling_support":
+      targetIntents.add("guided_practice");
+      targetIntents.add("independent_practice");
+      break;
+    case "speed_drill":
+      targetIntents.add("fluency");
+      break;
+    case "diagnostic":
+      targetIntents.add("quick_check");
+      break;
     default:
-      return [];
-  }
-}
-
-function filterExperiencesByPurpose(
-  experiences: KnowledgePointExperience[],
-  targetPurposes: string[],
-): KnowledgePointExperience[] {
-  if (targetPurposes.length === 0) {
-    return experiences;
+      break;
   }
 
-  const filtered = experiences.filter((experience) =>
-    experience.purposes.some((purpose) => targetPurposes.includes(purpose)),
-  );
-  return filtered.length > 0 ? filtered : experiences;
-}
-
-function selectExperiencesByTallies(
-  experiences: KnowledgePointExperience[],
-  tallies: Record<string, number>,
-): KnowledgePointExperience[] {
-  if (experiences.length === 0) {
-    return [];
+  if (targetIntents.size === 0) {
+    return templates;
   }
 
-  const sorted = [...experiences].sort((a, b) => {
-    const countA = tallies[a.id] ?? 0;
-    const countB = tallies[b.id] ?? 0;
-    if (countA === countB) {
-      return a.id.localeCompare(b.id);
-    }
-    return countA - countB;
-  });
-
-  const minCount = tallies[sorted[0].id] ?? 0;
-  const candidates = sorted.filter((experience) => (tallies[experience.id] ?? 0) === minCount);
-  return candidates.slice(0, 2);
+  const filtered = templates.filter((template) => targetIntents.has(template.intent));
+  return filtered.length > 0 ? filtered : templates;
 }
 
 function unique<T>(values: T[]): T[] {
@@ -509,11 +525,11 @@ function defaultModalities(
   return ["tap"];
 }
 
-function buildModalityCaps(topic: Skill, kind: "review" | "lesson" | "diagnostic") {
+function buildModalityCaps(skill: Skill, kind: "review" | "lesson" | "diagnostic") {
   if (kind === "diagnostic") {
     return { recommendedDevice: "touch" as const };
   }
-  if (topic.domain === "reading") {
+  if (skill.domain === "reading") {
     return { requiresVoice: true, recommendedDevice: "touch" as const };
   }
   return { recommendedDevice: "touch" as const };

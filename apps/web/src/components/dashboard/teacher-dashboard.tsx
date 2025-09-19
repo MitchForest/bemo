@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
   CalendarRange,
   ChevronRight,
+  Clock3,
   Flame,
   GraduationCap,
   Sparkles,
   Target,
   UserSquare,
-  Clock3,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { JourneySection } from "@/components/patterns/journey-section";
 import { Button } from "@/components/ui/button";
@@ -334,6 +334,9 @@ export function TeacherDashboard() {
   );
 }
 
+const TEACHER_LEFT_PLACEHOLDERS = ["one", "two", "three"] as const;
+const TEACHER_RIGHT_PLACEHOLDERS = ["alpha", "beta", "gamma"] as const;
+
 function TeacherDashboardSkeleton() {
   return (
     <div className="space-y-8 animate-pulse">
@@ -350,13 +353,19 @@ function TeacherDashboardSkeleton() {
       </div>
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-4">
-          {[...Array(3)].map((_, idx) => (
-            <div key={idx} className="h-20 rounded-3xl border border-border/60 bg-white/70" />
+          {TEACHER_LEFT_PLACEHOLDERS.map((key) => (
+            <div
+              key={`placeholder-left-${key}`}
+              className="h-20 rounded-3xl border border-border/60 bg-white/70"
+            />
           ))}
         </div>
         <div className="space-y-4">
-          {[...Array(3)].map((_, idx) => (
-            <div key={idx} className="h-32 rounded-3xl border border-border/60 bg-white/70" />
+          {TEACHER_RIGHT_PLACEHOLDERS.map((key) => (
+            <div
+              key={`placeholder-right-${key}`}
+              className="h-32 rounded-3xl border border-border/60 bg-white/70"
+            />
           ))}
         </div>
       </div>

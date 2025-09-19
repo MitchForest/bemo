@@ -1,4 +1,6 @@
-import { test, expect } from "bun:test";
+process.env.DATABASE_URL = "";
+
+import { expect, test } from "bun:test";
 import { getStudentProfileSummary } from "../index";
 
 const STUDENT_ID = "55555555-5555-4555-8555-555555555555";

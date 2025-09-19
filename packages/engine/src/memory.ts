@@ -1,4 +1,4 @@
-import type { StudentSkillState, Skill, Result } from "@repo/schemas";
+import type { Result, Skill, StudentSkillState } from "@repo/schemas";
 
 const STRUGGLE_STRENGTH_THRESHOLD = 0.45;
 const MASTERED_STRENGTH_THRESHOLD = 0.82;
@@ -12,7 +12,7 @@ interface MemoryUpdateParams {
   hintsUsed: number;
   weight?: number;
   now: Date;
-  experienceId?: string;
+  taskTemplateId?: string;
 }
 
 export interface MemoryUpdateResult {
@@ -32,7 +32,7 @@ export function updateMemoryState(params: MemoryUpdateParams): MemoryUpdateResul
     hintsUsed,
     weight = 1,
     now,
-    experienceId,
+    taskTemplateId,
   } = params;
   const prevStrength = state?.strength ?? 0.3;
   const prevStability = state?.stability ?? 0.6;
@@ -60,16 +60,15 @@ export function updateMemoryState(params: MemoryUpdateParams): MemoryUpdateResul
   const strugglingFlag = newStrength < STRUGGLE_STRENGTH_THRESHOLD || weightedSuccess < 0.4;
   const overdueDays = 0;
 
-  const experienceTallies = { ...(state?.experienceTallies ?? {}) };
-  if (experienceId) {
-    experienceTallies[experienceId] = (experienceTallies[experienceId] ?? 0) + 1;
+  const taskTemplateTallies = { ...(state?.taskTemplateTallies ?? {}) };
+  if (taskTemplateId) {
+    taskTemplateTallies[taskTemplateId] = (taskTemplateTallies[taskTemplateId] ?? 0) + 1;
   }
 
   const retentionProbability365 = estimateRetentionProbability(newStability, 365);
 
   const updatedState: StudentSkillState = {
     studentId,
-    topicId: state?.skillId ?? skill.id,
     skillId: state?.skillId ?? skill.id,
     stability: Number(newStability.toFixed(3)),
     strength: Number(newStrength.toFixed(3)),
@@ -81,7 +80,7 @@ export function updateMemoryState(params: MemoryUpdateParams): MemoryUpdateResul
     strugglingFlag,
     overdueDays,
     easiness: determineEasiness(newStrength),
-    experienceTallies,
+    taskTemplateTallies,
     retentionProbability365: Number(retentionProbability365.toFixed(3)),
   };
 

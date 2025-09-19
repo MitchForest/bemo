@@ -1,18 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import type { Task } from "@repo/schemas";
 import {
   Gamepad2,
   Gauge,
   Leaf,
+  PauseCircle,
   PencilRuler,
   PlayCircle,
-  PauseCircle,
   Sparkles,
   Wand2,
 } from "lucide-react";
-import { seedSkills } from "@repo/curriculum";
-import type { Task } from "@repo/schemas";
+import { useEffect, useMemo, useState } from "react";
 
 import { JourneySection, type JourneySectionState } from "@/components/patterns/journey-section";
 import { JoyBreakPicker } from "@/components/patterns/joy-break-picker";
@@ -27,8 +26,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useStudentDashboardData } from "@/hooks/use-student-dashboard-data";
-
-const SKILL_MAP = new Map(seedSkills.map((skill) => [skill.id, skill]));
 
 type JourneySectionModel = {
   id: string;
@@ -45,16 +42,22 @@ function formatMinutes(minutes?: number) {
   return `${clamped} min`;
 }
 
+function getPrimarySkillTitle(task: Task): string | undefined {
+  const metadata = task.metadata as Record<string, unknown> | undefined;
+  const title = metadata?.primarySkillTitle;
+  return typeof title === "string" ? title : undefined;
+}
+
 function describeTask(task: Task): JourneySectionModel {
-  const primarySkill = SKILL_MAP.get(task.skillIds?.[0] ?? task.topicIds[0] ?? "");
+  const primarySkillTitle = getPrimarySkillTitle(task);
   const baseDuration = formatMinutes(task.estimatedMinutes);
 
   if (task.type === "lesson") {
     return {
       id: task.id,
-      label: primarySkill ? `Lesson: ${primarySkill.title}` : "Lesson",
-      description: primarySkill
-        ? `Introduce ${primarySkill.title.toLowerCase()} with I-do, we-do, you-do.`
+      label: primarySkillTitle ? `Lesson: ${primarySkillTitle}` : "Lesson",
+      description: primarySkillTitle
+        ? `Introduce ${primarySkillTitle.toLowerCase()} with I-do, we-do, you-do.`
         : "Introduce new concept.",
       icon: Sparkles,
       duration: baseDuration,
@@ -65,7 +68,7 @@ function describeTask(task: Task): JourneySectionModel {
   if (task.type === "review") {
     return {
       id: task.id,
-      label: primarySkill ? `Review: ${primarySkill.title}` : "Adaptive review",
+      label: primarySkillTitle ? `Review: ${primarySkillTitle}` : "Adaptive review",
       description:
         task.reason === "struggling_support"
           ? "Coach-led reset with scaffolds queued by the engine."
@@ -79,7 +82,7 @@ function describeTask(task: Task): JourneySectionModel {
   if (task.type === "speed_drill") {
     return {
       id: task.id,
-      label: primarySkill ? `Speed drill: ${primarySkill.title}` : "Speed drill",
+      label: primarySkillTitle ? `Speed drill: ${primarySkillTitle}` : "Speed drill",
       description: "Short burst to build automaticity before unlocking a joy break.",
       icon: Gamepad2,
       duration: baseDuration,
@@ -100,7 +103,7 @@ function describeTask(task: Task): JourneySectionModel {
 
   return {
     id: task.id,
-    label: primarySkill ? `Adaptive: ${primarySkill.title}` : "Adaptive activity",
+    label: primarySkillTitle ? `Adaptive: ${primarySkillTitle}` : "Adaptive activity",
     description: "The engine added this to balance review and frontier skills.",
     icon: Sparkles,
     duration: baseDuration,
@@ -489,6 +492,8 @@ export function StudentDashboard() {
   );
 }
 
+const JOURNEY_SKELETON_KEYS = ["first", "second", "third"] as const;
+
 function StudentDashboardSkeleton() {
   return (
     <div className="space-y-8 animate-pulse">
@@ -510,8 +515,8 @@ function StudentDashboardSkeleton() {
             <div key={key} className="rounded-3xl border border-border/60 bg-white/70 p-6">
               <div className="h-6 w-48 rounded-full bg-muted" />
               <div className="mt-4 space-y-3">
-                {[...Array(3)].map((_, idx) => (
-                  <div key={idx} className="h-14 rounded-2xl bg-muted/70" />
+                {JOURNEY_SKELETON_KEYS.map((key) => (
+                  <div key={`placeholder-item-${key}`} className="h-14 rounded-2xl bg-muted/70" />
                 ))}
               </div>
             </div>

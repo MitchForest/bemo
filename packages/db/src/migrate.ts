@@ -1,9 +1,15 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
+import * as path from "node:path";
+import { config } from "dotenv";
 import { FileMigrationProvider, Migrator } from "kysely";
-import { db } from "./index";
+
+// Load environment variables
+config({ path: path.join(__dirname, "../../../.env") });
+
+import { getDb } from "./index";
 
 async function migrateToLatest() {
+  const db = getDb();
   const migrator = new Migrator({
     db,
     provider: new FileMigrationProvider({
@@ -15,13 +21,13 @@ async function migrateToLatest() {
 
   const { error, results } = await migrator.migrateToLatest();
 
-  results?.forEach((it) => {
+  for (const it of results || []) {
     if (it.status === "Success") {
       console.log(`migration "${it.migrationName}" was executed successfully`);
     } else if (it.status === "Error") {
       console.error(`failed to execute migration "${it.migrationName}"`);
     }
-  });
+  }
 
   if (error) {
     console.error("failed to migrate");
@@ -33,6 +39,7 @@ async function migrateToLatest() {
 }
 
 async function migrateDown() {
+  const db = getDb();
   const migrator = new Migrator({
     db,
     provider: new FileMigrationProvider({
@@ -44,13 +51,13 @@ async function migrateDown() {
 
   const { error, results } = await migrator.migrateDown();
 
-  results?.forEach((it) => {
+  for (const it of results || []) {
     if (it.status === "Success") {
       console.log(`migration "${it.migrationName}" was reverted successfully`);
     } else if (it.status === "Error") {
       console.error(`failed to revert migration "${it.migrationName}"`);
     }
-  });
+  }
 
   if (error) {
     console.error("failed to migrate");

@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import type { Node, Edge } from "@xyflow/react";
-import { MarkerType } from "@xyflow/react";
 import { seedSkills } from "@repo/curriculum";
+import type { Edge, Node } from "@xyflow/react";
+import { MarkerType } from "@xyflow/react";
+import dynamic from "next/dynamic";
+import { useMemo, useState } from "react";
 
 const ReactFlow = dynamic(() => import("@xyflow/react").then((mod) => mod.ReactFlow), {
   ssr: false,
@@ -28,10 +28,13 @@ const STAGE_META: Record<string, { label: string; tier: StageTier }> = {
   R2_K_PHONICS: { label: "K Phonics", tier: "core" },
   R3_K_AUTOMATIC: { label: "K Automaticity", tier: "stretch" },
   R4_G1_CORE: { label: "Grade 1 Core", tier: "core" },
+  R5_G2_EXTENSION: { label: "Grade 2 Extension", tier: "core" },
   M0_FOUNDATIONS: { label: "Math Foundations", tier: "foundation" },
-  M1_PREK_CORE: { label: "Math Core", tier: "core" },
-  M2_PREK_STRETCH: { label: "Stretch", tier: "stretch" },
-  M3_K_CORE: { label: "Grade 1 Core", tier: "core" },
+  M1_PREK_CORE: { label: "Math Pre-K Core", tier: "core" },
+  M2_PREK_STRETCH: { label: "Pre-K Stretch", tier: "stretch" },
+  M3_K_CORE: { label: "Kindergarten Core", tier: "core" },
+  M4_G1_CORE: { label: "Grade 1 Core", tier: "core" },
+  M5_G2_EXTENSION: { label: "Grade 2 Extension", tier: "core" },
 };
 
 const STAGE_BADGE_STYLES: Record<StageTier, { background: string; color: string }> = {
@@ -139,7 +142,7 @@ function computeBaseGraph(): GraphComputation {
             type: "skillNode",
           });
 
-          skill.prerequisites?.forEach((prereq) => {
+          for (const prereq of skill.prerequisites ?? []) {
             edges.push({
               id: `${prereq.skillId}->${skill.id}`,
               source: prereq.skillId,
@@ -150,9 +153,9 @@ function computeBaseGraph(): GraphComputation {
               labelBgPadding: [4, 4] as [number, number],
               labelBgBorderRadius: 999,
             });
-          });
+          }
 
-          skill.encompassing?.forEach((entry) => {
+          for (const entry of skill.encompassing ?? []) {
             edges.push({
               id: `${entry.skillId}~${skill.id}`,
               source: entry.skillId,
@@ -164,7 +167,7 @@ function computeBaseGraph(): GraphComputation {
               labelBgBorderRadius: 999,
               animated: true,
             });
-          });
+          }
         });
       });
     },

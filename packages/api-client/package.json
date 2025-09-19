@@ -9,8 +9,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "hono": "^4.6.14",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "@repo/schemas": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

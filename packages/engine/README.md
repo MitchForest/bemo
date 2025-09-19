@@ -6,22 +6,23 @@ Adaptive learning engine powering Bemo's 80/20 math-first roadmap, motivation sy
 
 | Module | Responsibility |
 | ------ | --------------- |
-| `plan.ts` | Builds daily playlists (compressed review → frontier lessons → speed drills → optional diagnostics) with modality caps and motivation metadata. |
-| `memory.ts` | Updates stability/strength after each evidence event and applies weighted credit to encompassing topics. |
+| `plan.ts` | Builds daily playlists (learn → practice → review → quick check) using skill task templates, XP awards, and spacing rules. |
+| `memory.ts` | Updates stability/strength after each evidence event and applies weighted credit to encompassing skills. |
 | `evidence.ts` | Processes evidence batches, awards XP, and emits achievement hooks. |
 | `motivation.ts` | Computes XP goal progress, streak state, reward eligibility, and joy-break availability. |
 | `diagnostic.ts` | Manages lightweight adaptive math probes with retry logic and provisional mastery estimates. |
-| `profile.ts` | Aggregates mastery, due/overdue topics, speed flags, latest plan, and check-chart progress for dashboards. |
+| `profile.ts` | Aggregates mastery, due/overdue skills, speed flags, latest plan, and check-chart progress for dashboards. |
 | `report.ts` | Generates weekly XP/minutes rollups and coach action items. |
-| `data.ts` | In-memory fallback store for topic states, profiles, and stats until the Kysely persistence layer is enabled. |
+| `data.ts` | In-memory fallback store for skill states, profiles, and stats until the Kysely persistence layer is enabled. |
 
 Everything re-exports through `index.ts` with types sourced from `@repo/schemas`, giving end-to-end type safety.
 
 ## Key capabilities
 
-- **80/20 playlisting** with math-first prioritisation, struggling-topic boosts, and implicit review compression.
+- **Intent-aware playlisting** with math-first prioritisation, struggling-skill boosts, and template-driven review compression.
 - **Speed fluency targeting** using latency thresholds and speed-factor metrics to launch timed drills.
-- **Motivation mechanics** including daily XP goal tracking, streak updates, reward thresholds, and time-back calculations.
+- **Motivation mechanics** including daily (50 XP) and weekly (150 XP) goal tracking, sticker unlocks, streak updates, and optional joy breaks.
+- **Motivation persistence** backed by Postgres when available (league membership, quest progress, time-back ledger) with in-memory fallbacks for local mode.
 - **Diagnostics** seeded with subitizing, counting, addition, and telling time probes plus retry variants.
 - **Dashboards & reports** that surface mastery trends, overdue items, and weekly highlights for adults.
 
@@ -52,8 +53,7 @@ const payload: SubmitEvidence = {
   events: [
     {
       studentId: "11111111-1111-4111-8111-111111111111",
-      topicId: "00000000-0000-4000-8000-000000000204",
-      knowledgePointId: "10000000-0000-4000-8000-000000000207",
+      skillId: "00000000-0000-4000-8000-000000000204",
       itemId: "item-uuid",
       result: "correct",
       latencyMs: 3200,
@@ -123,7 +123,7 @@ const weeklyReport = await getWeeklyReport(studentId);
 
 - **Strength** (0–1) reflects retrieval confidence and reacts to accuracy, hints, and latency.
 - **Stability** tracks half-life; strong retrievals boost it while misses shorten spacing.
-- **Encompassing edges** allow implicit review credit to parent topics for compressed playlists.
+- **Encompassing edges** allow implicit review credit to parent skills for compressed playlists.
 - **Speed factor** compares observed latency vs. expected latency to surface fluency gaps.
 
 `data.ts` currently provides seeded, in-memory fallbacks. Once the database tables include the necessary audit columns, swap in the commented Kysely helpers to persist learner state.

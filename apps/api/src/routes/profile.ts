@@ -1,7 +1,7 @@
-import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { auth } from "@repo/auth";
-import { StudentProfileSummarySchema } from "@repo/schemas";
 import { getStudentProfileSummary } from "@repo/engine";
+import { StudentProfileSummarySchema } from "@repo/schemas";
 
 const app = new OpenAPIHono();
 

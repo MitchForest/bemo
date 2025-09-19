@@ -29,5 +29,17 @@
   },
   "files": {
     "ignore": ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/.turbo/**", "**/coverage/**"]
-  }
+  },
+  "overrides": [
+    {
+      "include": ["packages/db/migrations/*.ts", "packages/db/src/database-types.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ]
 }

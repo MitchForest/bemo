@@ -5,20 +5,34 @@ import {
   ItemTypeSchema,
   ModalitySchema,
   PrereqGateSchema,
-  ExperienceDeliveryKindSchema,
-  ExperiencePurposeSchema,
   SensoryTagSchema,
+  TaskIntentSchema,
+  TaskStepKindSchema,
 } from "./common";
 
 export const MathStageCodeSchema = z
-  .enum(["M0_FOUNDATIONS", "M1_PREK_CORE", "M2_PREK_STRETCH", "M3_K_CORE", "M4_G1_CORE"])
+  .enum([
+    "M0_FOUNDATIONS",
+    "M1_PREK_CORE",
+    "M2_PREK_STRETCH",
+    "M3_K_CORE",
+    "M4_G1_CORE",
+    "M5_G2_EXTENSION",
+  ])
   .openapi({
     description: "Math learning progression stage",
     example: "M2_PREK_STRETCH",
   });
 
 export const ReadingStageCodeSchema = z
-  .enum(["R0_FOUNDATIONS", "R1_PREK_CORE", "R2_K_PHONICS", "R3_K_AUTOMATIC", "R4_G1_CORE"])
+  .enum([
+    "R0_FOUNDATIONS",
+    "R1_PREK_CORE",
+    "R2_K_PHONICS",
+    "R3_K_AUTOMATIC",
+    "R4_G1_CORE",
+    "R5_G2_EXTENSION",
+  ])
   .openapi({
     description: "Reading learning progression stage",
     example: "R2_K_PHONICS",
@@ -65,8 +79,8 @@ export const SkillSchema = z
     prerequisites: z.array(SkillPrerequisiteSchema).default([]),
     encompassing: z.array(EncompassingRelationSchema).default([]),
     interferenceGroup: z.string().optional().openapi({
-      description: "Group of confusable topics",
-      example: "CVC-short-vowels",
+      description: "Group of confusable skills",
+      example: "cvc-short-vowels",
     }),
     expectedTimeSeconds: z.number().int().positive(),
     checkChartTags: z.array(z.string()).default([]),
@@ -86,47 +100,6 @@ export const SkillSchema = z
       checkChartTags: ["I can read CVC words"],
     },
   });
-
-// Commented out - using organization.ts version
-/* export const LessonSchema = z
-  .object({
-    id: z.string().uuid(),
-    courseId: z.string().uuid(),
-    title: z.string().min(1).max(200),
-    summary: z.string().optional(),
-    sequence: z.number().int().min(0).default(0),
-    focusQuestion: z.string().optional(),
-    skillIds: z.array(z.string().uuid()).default([]),
-    estimatedMinutes: z.number().int().min(0).optional(),
-    metadata: z.record(z.any()).default({}),
-  })
-  .openapi({ description: "Lesson grouping a set of skills" }); */
-
-// Commented out - using organization.ts version
-/* export const CourseSchema = z
-  .object({
-    id: z.string().uuid(),
-    subjectId: z.string().uuid(),
-    title: z.string().min(1).max(200),
-    summary: z.string().optional(),
-    gradeBand: GradeBandSchema.optional(),
-    sequence: z.number().int().min(0).default(0),
-    lessonIds: z.array(z.string().uuid()).default([]),
-    metadata: z.record(z.any()).default({}),
-  })
-  .openapi({ description: "Course within a subject" }); */
-
-// Commented out - using organization.ts version
-/* export const SubjectSchema = z
-  .object({
-    id: z.string().uuid(),
-    title: z.string().min(1).max(200),
-    domain: DomainSchema,
-    description: z.string().optional(),
-    courseIds: z.array(z.string().uuid()).default([]),
-    metadata: z.record(z.any()).default({}),
-  })
-  .openapi({ description: "Subject (e.g., Reading, Math)" }); */
 
 export const RubricSchema = z
   .object({
@@ -150,10 +123,11 @@ export const ItemPromptSchema = z
   })
   .openapi({ description: "Item prompt content" });
 
-export const ItemSchema = z
+export const LearningItemSchema = z
   .object({
     id: z.string().uuid(),
-    knowledgePointId: z.string().uuid(),
+    skillId: z.string().uuid(),
+    taskTemplateId: z.string().uuid().optional(),
     type: ItemTypeSchema,
     prompt: ItemPromptSchema,
     rubric: RubricSchema,
@@ -170,10 +144,10 @@ export const ItemSchema = z
       .default([]),
   })
   .openapi({
-    description: "Learning item",
+    description: "Instructional item linked to a skill task",
     example: {
       id: "123e4567-e89b-12d3-a456-426614174001",
-      knowledgePointId: "123e4567-e89b-12d3-a456-426614174002",
+      skillId: "123e4567-e89b-12d3-a456-426614174000",
       type: "choice_text",
       prompt: { text: 'Which word is "cat"?' },
       rubric: { type: "exact" },
@@ -182,76 +156,66 @@ export const ItemSchema = z
     },
   });
 
-export const KnowledgePointSchema = z
+export const TaskStepItemSchema = z
+  .object({
+    prompt: z.string().min(1),
+    correctAnswer: z.string().optional(),
+    explanation: z.string().optional(),
+    choices: z.array(z.string()).optional(),
+  })
+  .openapi({ description: "Practice or check item inside a task step" });
+
+export const TaskStepSchema = z
+  .object({
+    kind: TaskStepKindSchema,
+    prompt: z.string().min(1),
+    expectedResponse: z.string().optional(),
+    modality: ModalitySchema.optional(),
+    assets: z.array(z.string().uuid()).default([]),
+    hints: z.array(z.string()).default([]),
+    items: z.array(TaskStepItemSchema).optional(),
+    exitAfterConsecutiveCorrect: z.number().int().min(1).optional(),
+  })
+  .openapi({ description: "Single instructional or practice move inside a template" });
+
+export const SkillTaskTemplateSchema = z
   .object({
     id: z.string().uuid(),
     skillId: z.string().uuid(),
-    objective: z.string().min(1).max(200),
-    workedExample: z.array(z.string()),
-    practiceItems: z.array(z.string()).openapi({
-      description: "Item IDs for practice",
-    }),
-    reteachSnippet: z.string(),
-    expectedTimeSeconds: z.number().int().positive(),
-    hints: z.array(z.string()).default([]),
-  })
-  .openapi({
-    description: "Knowledge point within a topic",
-    example: {
-      id: "123e4567-e89b-12d3-a456-426614174002",
-      skillId: "123e4567-e89b-12d3-a456-426614174000",
-      objective: "Blend and read -at words",
-      workedExample: ["Sound out c-a-t", "Blend to say cat"],
-      reteachSnippet: "Stretch sounds with blocks: c—a—t → cat",
-      expectedTimeSeconds: 120,
-      practiceItems: [],
-    },
-  });
-
-export const KnowledgePointExperienceSchema = z
-  .object({
-    id: z.string().uuid(),
-    knowledgePointId: z.string().uuid(),
+    intent: TaskIntentSchema,
     title: z.string().min(1).max(200),
-    deliveryKind: ExperienceDeliveryKindSchema,
-    purposes: z.array(ExperiencePurposeSchema).default(["entry"]),
+    xpAward: z.number().int().min(0).default(0),
+    estimatedMinutes: z.number().int().min(1).max(10).default(3),
     modalities: z.array(ModalitySchema).default([]),
     sensoryTags: z.array(SensoryTagSchema).default([]),
-    estimatedMinutes: z.number().int().min(1).max(20).optional(),
-    stepIds: z.array(z.string().uuid()).default([]),
-    practiceActivityIds: z.array(z.string().uuid()).default([]),
-    assetIds: z.array(z.string().uuid()).default([]),
+    steps: z.array(TaskStepSchema),
     metadata: z.record(z.any()).default({}),
   })
   .openapi({
-    description: "Configured delivery experience for a knowledge point",
+    description: "Reusable micro-lesson specifying how to move a skill forward",
     example: {
       id: "987e6543-e21b-45d3-a456-426614174111",
-      knowledgePointId: "123e4567-e89b-12d3-a456-426614174002",
-      title: "Tile build with audio blend",
-      deliveryKind: "manipulative_play",
-      modalities: ["drag", "voice"],
-      sensoryTags: ["tactile", "auditory"],
-      practiceActivityIds: ["32000000-0000-4000-8000-000000000301"],
+      skillId: "123e4567-e89b-12d3-a456-426614174000",
+      intent: "learn",
+      title: "Learn: Decode CVC words with short a",
+      xpAward: 20,
+      estimatedMinutes: 3,
+      modalities: ["voice", "tap"],
+      steps: [
+        {
+          kind: "instruction",
+          prompt: "Listen and point as we sound out cat.",
+          modality: "voice",
+        },
+      ],
     },
   });
 
-export const TopicSchema = SkillSchema;
-export const PrerequisiteSchema = SkillPrerequisiteSchema;
-export const EncompassingEdgeSchema = EncompassingRelationSchema;
-
-// Commented out - using organization.ts versions
-// export type Subject = z.infer<typeof SubjectSchema>;
-// export type Course = z.infer<typeof CourseSchema>;
-// export type Lesson = z.infer<typeof LessonSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
-export type Topic = Skill;
-export type MathStageCode = z.infer<typeof MathStageCodeSchema>;
-export type ReadingStageCode = z.infer<typeof ReadingStageCodeSchema>;
-export type StageCode = z.infer<typeof StageCodeSchema>;
-export type KnowledgePoint = z.infer<typeof KnowledgePointSchema>;
-export type KnowledgePointExperience = z.infer<typeof KnowledgePointExperienceSchema>;
-export type Item = z.infer<typeof ItemSchema>;
-export type Prerequisite = z.infer<typeof SkillPrerequisiteSchema>;
+export type SkillPrerequisite = z.infer<typeof SkillPrerequisiteSchema>;
 export type EncompassingRelation = z.infer<typeof EncompassingRelationSchema>;
-export type EncompassingEdge = EncompassingRelation;
+export type LearningItem = z.infer<typeof LearningItemSchema>;
+export type SkillTaskTemplate = z.infer<typeof SkillTaskTemplateSchema>;
+export type TaskStep = z.infer<typeof TaskStepSchema>;
+export type TaskStepItem = z.infer<typeof TaskStepItemSchema>;
+export type StageCode = z.infer<typeof StageCodeSchema>;

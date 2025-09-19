@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { MotivationRewardSchema, MotivationTrackSchema, JoyBreakSchema } from "./content";
+import { JoyBreakSchema, MotivationRewardSchema, MotivationTrackSchema } from "./content";
 
 export const MotivationStreakSchema = z
   .object({
@@ -133,8 +133,11 @@ export const MotivationSummarySchema = z
   .object({
     studentId: z.string().uuid(),
     dailyGoalXp: z.number().int().min(0),
+    weeklyGoalXp: z.number().int().min(0),
     xpEarnedToday: z.number().int().min(0),
     xpRemainingToday: z.number().int().min(0),
+    xpEarnedThisWeek: z.number().int().min(0),
+    xpRemainingThisWeek: z.number().int().min(0),
     projectedCompletionMinutes: z.number().int().min(0).optional(),
     streak: MotivationStreakSchema,
     tracks: z.array(MotivationTrackProgressSchema),

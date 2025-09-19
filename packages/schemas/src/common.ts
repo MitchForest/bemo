@@ -5,7 +5,7 @@ export const DomainSchema = z.enum(["math", "reading"]).openapi({
   example: "math",
 });
 
-export const GradeBandSchema = z.enum(["PreK", "K", "1"]).openapi({
+export const GradeBandSchema = z.enum(["PreK", "K", "1", "2"]).openapi({
   description: "Grade band",
   example: "K",
 });
@@ -40,6 +40,34 @@ export const TaskTypeSchema = z
   .openapi({
     description: "Type of learning task",
     example: "lesson",
+  });
+
+export const TaskIntentSchema = z
+  .enum([
+    "learn",
+    "guided_practice",
+    "independent_practice",
+    "fluency",
+    "review_prompt",
+    "quick_check",
+  ])
+  .openapi({
+    description: "Instructional intent for a skill task template",
+    example: "learn",
+  });
+
+export const TaskStepKindSchema = z
+  .enum(["instruction", "example", "guided_practice", "practice", "prompt", "reflection"])
+  .openapi({
+    description: "Structure of a step inside a skill task template",
+    example: "guided_practice",
+  });
+
+export const TaskPurposeSchema = z
+  .enum(["lesson", "review", "reteach", "fluency", "challenge", "diagnostic"])
+  .openapi({
+    description: "Intended moment in the learning loop for a task template",
+    example: "reteach",
   });
 
 export const ModalitySchema = z.enum(["voice", "tap", "trace", "type", "drag"]).openapi({
@@ -86,29 +114,6 @@ export const LessonStepKindSchema = z
     example: "coach_prompt",
   });
 
-export const ExperienceDeliveryKindSchema = z
-  .enum([
-    "explicit_instruction",
-    "guided_exploration",
-    "manipulative_play",
-    "movement",
-    "storytelling",
-    "fluency_loop",
-    "retrieval",
-    "creative_application",
-  ])
-  .openapi({
-    description: "Design pattern for delivering a knowledge point experience",
-    example: "guided_exploration",
-  });
-
-export const ExperiencePurposeSchema = z
-  .enum(["entry", "reteach", "fluency", "challenge"])
-  .openapi({
-    description: "Intended moment in the learning loop for an experience",
-    example: "reteach",
-  });
-
 export const SensoryTagSchema = z
   .enum(["visual", "auditory", "kinesthetic", "tactile", "verbal", "creative"])
   .openapi({
@@ -151,6 +156,9 @@ export type GradeBand = z.infer<typeof GradeBandSchema>;
 export type ItemType = z.infer<typeof ItemTypeSchema>;
 export type Result = z.infer<typeof ResultSchema>;
 export type TaskType = z.infer<typeof TaskTypeSchema>;
+export type TaskIntent = z.infer<typeof TaskIntentSchema>;
+export type TaskPurpose = z.infer<typeof TaskPurposeSchema>;
+export type TaskStepKind = z.infer<typeof TaskStepKindSchema>;
 export type Modality = z.infer<typeof ModalitySchema>;
 export type PrereqGate = z.infer<typeof PrereqGateSchema>;
 export type AssetType = z.infer<typeof AssetTypeSchema>;
@@ -158,6 +166,4 @@ export type LessonStepKind = z.infer<typeof LessonStepKindSchema>;
 export type PracticeActivityType = z.infer<typeof PracticeActivityTypeSchema>;
 export type MicroGameGenre = z.infer<typeof MicroGameGenreSchema>;
 export type RewardType = z.infer<typeof RewardTypeSchema>;
-export type ExperienceDeliveryKind = z.infer<typeof ExperienceDeliveryKindSchema>;
-export type ExperiencePurpose = z.infer<typeof ExperiencePurposeSchema>;
 export type SensoryTag = z.infer<typeof SensoryTagSchema>;

@@ -71,7 +71,7 @@ app.openapi(evidenceRoute, async (c) => {
       {
         success: true,
         updatedStates: result.updatedStates.map((state) => ({
-          topicId: state.skillId, // Map skillId to topicId for API compatibility
+          skillId: state.skillId,
           dueAt: state.dueAt,
           stability: state.stability,
           strength: state.strength,

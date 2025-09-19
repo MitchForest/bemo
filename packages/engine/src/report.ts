@@ -1,10 +1,9 @@
-import type { WeeklyReport, StudentSkillState } from "@repo/schemas";
-import { loadStudentStats, loadStudentSkillStates } from "./data";
-import { seedSkills } from "@repo/curriculum";
+import type { StudentSkillState, WeeklyReport } from "@repo/schemas";
+import { getAllSkills, loadStudentSkillStates, loadStudentStats } from "./data";
 
 export async function getWeeklyReport(studentId: string): Promise<WeeklyReport> {
   const stats = await loadStudentStats(studentId);
-  const skills = seedSkills;
+  const skills = await getAllSkills();
   const skillStates = await loadStudentSkillStates(studentId, skills);
 
   const today = new Date();
@@ -34,7 +33,7 @@ export async function getWeeklyReport(studentId: string): Promise<WeeklyReport> 
       current: stats.currentStreak,
       longest: stats.longestStreak,
       isActive: stats.currentStreak > 0,
-      lastActiveDate: stats.lastActiveAt,
+      lastActiveDate: stats.lastActiveAt ?? undefined,
     },
     planStats: undefined,
     daily,

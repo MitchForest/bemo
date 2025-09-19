@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { seedDiagnosticProbes } from "@repo/curriculum";
 import type {
   DiagnosticAnswerRequest,
   DiagnosticAnswerResponse,
@@ -7,7 +8,6 @@ import type {
   DiagnosticProbe,
   DiagnosticSessionSummary,
 } from "@repo/schemas";
-import { seedDiagnosticProbes } from "@repo/curriculum";
 
 interface DiagnosticSession {
   studentId: string;

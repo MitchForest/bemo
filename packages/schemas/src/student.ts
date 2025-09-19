@@ -20,6 +20,7 @@ export const StudentProfileSchema = z
     settings: z
       .object({
         dailyXpGoal: z.number().int().min(10).max(100).default(30),
+        weeklyXpGoal: z.number().int().min(0).max(1000).default(150),
         soundEnabled: z.boolean().default(true),
         musicEnabled: z.boolean().default(true),
         accessibilityMode: z.string().optional(),
@@ -44,7 +45,6 @@ export const StudentSkillStateSchema = z
   .object({
     studentId: z.string().uuid(),
     skillId: z.string().uuid(),
-    topicId: z.string().uuid().optional(),
     stability: z.number().min(0).openapi({
       description: "Memory half-life proxy",
       example: 1.0,
@@ -64,8 +64,8 @@ export const StudentSkillStateSchema = z
       description: "Speed relative to expected",
       example: 1.2,
     }),
-    experienceTallies: z.record(z.string(), z.number().int().min(0)).default({}).openapi({
-      description: "Counts of experiences delivered for this skill",
+    taskTemplateTallies: z.record(z.string(), z.number().int().min(0)).default({}).openapi({
+      description: "Counts of task templates delivered for this skill",
     }),
     strugglingFlag: z.boolean().default(false),
     overdueDays: z.number().int().min(0).default(0),
@@ -100,7 +100,7 @@ export const StudentStatsSchema = z
     totalMinutes: z.number().int().min(0),
     skillsCompleted: z.number().int().min(0),
     speedDrillsCompleted: z.number().int().min(0),
-    lastActiveAt: z.string().datetime(),
+    lastActiveAt: z.string().datetime().nullable(),
     weeklyXp: z
       .array(
         z.object({
@@ -113,7 +113,5 @@ export const StudentStatsSchema = z
   .openapi({ description: "Student statistics" });
 
 export type StudentProfile = z.infer<typeof StudentProfileSchema>;
-export const StudentTopicStateSchema = StudentSkillStateSchema;
 export type StudentSkillState = z.infer<typeof StudentSkillStateSchema>;
-export type StudentTopicState = StudentSkillState;
 export type StudentStats = z.infer<typeof StudentStatsSchema>;

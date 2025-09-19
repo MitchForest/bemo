@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  seedJoyBreaks,
+  seedMotivationLeagues,
+  seedMotivationRewards,
+  seedMotivationTracks,
+} from "@repo/curriculum";
 import type {
   ClaimRewardRequest,
   ClaimRewardResponse,
@@ -14,22 +20,16 @@ import type {
   TimeBackLedgerEntry,
 } from "@repo/schemas";
 import {
-  seedMotivationRewards,
-  seedMotivationTracks,
-  seedJoyBreaks,
-  seedMotivationLeagues,
-} from "@repo/curriculum";
-import {
-  loadStudentProfile,
-  loadStudentStats,
-  loadStudentLeagueMembership,
-  setStudentLeagueMembership,
-  loadStudentQuests,
-  persistStudentQuests,
-  loadTimeBackLedger,
   addTimeBackLedgerEntry,
-  markTimeBackEntryConsumed,
   ensureDailyTimeBackReward,
+  loadStudentLeagueMembership,
+  loadStudentProfile,
+  loadStudentQuests,
+  loadStudentStats,
+  loadTimeBackLedger,
+  markTimeBackEntryConsumed,
+  persistStudentQuests,
+  setStudentLeagueMembership,
 } from "./data";
 
 export async function getMotivationSummary(studentId: string): Promise<MotivationSummary> {
@@ -38,21 +38,32 @@ export async function getMotivationSummary(studentId: string): Promise<Motivatio
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayXp = stats.weeklyXp.find((entry) => entry.date === todayKey)?.xp ?? 0;
   const dailyGoal = profile.settings.dailyXpGoal ?? 80;
+  const weekXp = stats.weeklyXp.reduce((sum, entry) => sum + entry.xp, 0);
+  const weeklyGoal = profile.settings.weeklyXpGoal ?? dailyGoal * 5;
 
-  const tracks = seedMotivationTracks.map((track) => enrichTrackProgress(track, todayXp));
-  const pendingRewards = buildRewardProgress(seedMotivationRewards, todayXp);
+  const xpByTrack: Record<string, number> = {};
+  for (const track of seedMotivationTracks) {
+    const progress = track.cadence === "daily" ? todayXp : weekXp;
+    xpByTrack[track.id] = progress;
+  }
+  const defaultProgress = todayXp;
+
+  const tracks = seedMotivationTracks.map((track) =>
+    enrichTrackProgress(track, xpByTrack[track.id] ?? defaultProgress),
+  );
+  const pendingRewards = buildRewardProgress(seedMotivationRewards, xpByTrack, defaultProgress);
   const joyBreak = buildJoyBreak(todayXp, dailyGoal);
 
   if (dailyGoal > 0 && todayXp >= dailyGoal) {
-    ensureDailyTimeBackReward(studentId, Math.max(5, Math.round(dailyGoal / 4)), todayKey);
+    await ensureDailyTimeBackReward(studentId, Math.max(5, Math.round(dailyGoal / 4)), todayKey);
   }
 
-  const ledger = loadTimeBackLedger(studentId);
+  const ledger = await loadTimeBackLedger(studentId);
   const availableTimeBack = ledger
     .filter((entry) => !entry.consumedAt)
     .reduce((sum, entry) => sum + entry.minutesGranted, 0);
 
-  const membership = loadStudentLeagueMembership(studentId);
+  const membership = await loadStudentLeagueMembership(studentId);
   const activeLeague = membership.leagueId
     ? decorateLeague(seedMotivationLeagues.find((league) => league.id === membership.leagueId))
     : undefined;
@@ -69,19 +80,22 @@ export async function getMotivationSummary(studentId: string): Promise<Motivatio
     activeLeague.squads.push(activeSquad);
   }
 
-  const quests = loadStudentQuests(studentId);
+  const quests = await loadStudentQuests(studentId);
 
   return {
     studentId,
     dailyGoalXp: dailyGoal,
+    weeklyGoalXp: weeklyGoal,
     xpEarnedToday: todayXp,
     xpRemainingToday: Math.max(0, dailyGoal - todayXp),
+    xpEarnedThisWeek: weekXp,
+    xpRemainingThisWeek: Math.max(0, weeklyGoal - weekXp),
     projectedCompletionMinutes: dailyGoal > 0 ? Math.round((dailyGoal - todayXp) / 8) : undefined,
     streak: {
       current: stats.currentStreak,
       longest: stats.longestStreak,
       isActive: stats.currentStreak > 0,
-      lastActiveDate: stats.lastActiveAt,
+      lastActiveDate: stats.lastActiveAt ?? undefined,
     },
     tracks,
     pendingRewards,
@@ -136,12 +150,19 @@ function enrichTrackProgress(track: MotivationTrack, xp: number) {
   };
 }
 
-function buildRewardProgress(rewards: MotivationReward[], xp: number): MotivationRewardProgress[] {
-  return rewards.map((reward) => ({
-    ...reward,
-    unlocked: xp >= reward.threshold,
-    progress: reward.threshold > 0 ? Math.min(1, xp / reward.threshold) : 1,
-  }));
+function buildRewardProgress(
+  rewards: MotivationReward[],
+  xpByTrack: Record<string, number>,
+  defaultXp: number,
+): MotivationRewardProgress[] {
+  return rewards.map((reward) => {
+    const xp = xpByTrack[reward.trackId ?? ""] ?? defaultXp;
+    return {
+      ...reward,
+      unlocked: xp >= reward.threshold,
+      progress: reward.threshold > 0 ? Math.min(1, xp / reward.threshold) : 1,
+    };
+  });
 }
 
 function buildJoyBreak(todayXp: number, dailyGoal: number) {
@@ -172,7 +193,7 @@ export async function joinMotivationSquad(
   leagueId: string,
   squadId?: string,
 ): Promise<{ league: MotivationLeague | undefined; squad: MotivationSquad | undefined }> {
-  setStudentLeagueMembership(studentId, leagueId, squadId);
+  await setStudentLeagueMembership(studentId, leagueId, squadId);
   const league = decorateLeague(seedMotivationLeagues.find((item) => item.id === leagueId));
   const stats = await loadStudentStats(studentId);
   const squad = league && squadId ? decorateSquad(league, squadId, studentId, stats) : undefined;
@@ -193,7 +214,7 @@ export async function updateQuestTaskProgress(
   progress: number,
   completed: boolean,
 ): Promise<MotivationQuest[]> {
-  const quests = loadStudentQuests(studentId);
+  const quests = await loadStudentQuests(studentId);
   const updated = quests.map((quest) => {
     if (quest.id !== questId) return quest;
     const tasks = quest.tasks.map((task) =>
@@ -204,7 +225,7 @@ export async function updateQuestTaskProgress(
     const status = tasks.every((task) => task.completed) ? "completed" : quest.status;
     return { ...quest, tasks, progressPercent: Number(progressPercent.toFixed(2)), status };
   });
-  persistStudentQuests(studentId, updated);
+  await persistStudentQuests(studentId, updated);
   return updated;
 }
 
@@ -212,7 +233,7 @@ export async function claimQuestReward(
   studentId: string,
   questId: string,
 ): Promise<MotivationQuest | undefined> {
-  const quests = loadStudentQuests(studentId);
+  const quests = await loadStudentQuests(studentId);
   const quest = quests.find((item) => item.id === questId);
   if (!quest) return undefined;
   if (quest.status === "claimed" || quest.status === "locked") {
@@ -227,10 +248,10 @@ export async function claimQuestReward(
     status: "claimed",
   };
   const updated = quests.map((item) => (item.id === questId ? updatedQuest : item));
-  persistStudentQuests(studentId, updated);
+  await persistStudentQuests(studentId, updated);
 
   const minutes = Math.max(5, Math.round(quest.xpReward / 5));
-  addTimeBackLedgerEntry({
+  await addTimeBackLedgerEntry({
     id: randomUUID(),
     studentId,
     source: "quest",
@@ -252,7 +273,8 @@ export async function claimTimeBackEntry(
   studentId: string,
   entryId: string,
 ): Promise<TimeBackLedgerEntry[]> {
-  return markTimeBackEntryConsumed(studentId, entryId, new Date());
+  await markTimeBackEntryConsumed(studentId, entryId);
+  return loadTimeBackLedger(studentId);
 }
 
 export async function getMotivationDigest(

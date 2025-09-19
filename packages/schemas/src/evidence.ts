@@ -24,10 +24,9 @@ export const EvidenceEventSchema = z
   .object({
     studentId: z.string().uuid(),
     skillId: z.string().uuid(),
-    knowledgePointId: z.string().uuid().optional(),
     itemId: z.string().uuid(),
     taskId: z.string().uuid().optional(),
-    experienceId: z.string().uuid().optional(),
+    taskTemplateId: z.string().uuid().optional(),
     timestamp: z.string().datetime(),
     result: ResultSchema,
     latencyMs: z.number().int().min(0),
@@ -63,7 +62,7 @@ export const EvidenceResponseSchema = z
     updatedStates: z
       .array(
         z.object({
-          topicId: z.string().uuid(),
+          skillId: z.string().uuid(),
           dueAt: z.string().datetime(),
           stability: z.number(),
           strength: z.number(),

@@ -1,7 +1,7 @@
-import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { auth } from "@repo/auth";
-import { WeeklyReportSchema } from "@repo/schemas";
 import { getWeeklyReport } from "@repo/engine";
+import { WeeklyReportSchema } from "@repo/schemas";
 
 const app = new OpenAPIHono();
 

@@ -1,6 +1,6 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import type { StudentProfileSummary, WeeklyReport } from "@repo/schemas";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import { DEFAULT_STUDENT_ID } from "@/config/demo-students";
 import { fetchStudentProfileSummary, fetchWeeklyReport } from "@/lib/api/dashboard";

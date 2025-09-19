@@ -16,3 +16,4 @@ export {
 export { getNextDiagnosticProbe, submitDiagnosticAnswer } from "./diagnostic";
 export { getStudentProfileSummary } from "./profile";
 export { getWeeklyReport } from "./report";
+export { getAllSkills } from "./data";

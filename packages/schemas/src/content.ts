@@ -1,15 +1,15 @@
 import { z } from "@hono/zod-openapi";
 import {
   AssetTypeSchema,
-  LessonStepKindSchema,
-  PracticeActivityTypeSchema,
-  MicroGameGenreSchema,
-  RewardTypeSchema,
-  ModalitySchema,
   DomainSchema,
   GradeBandSchema,
+  LessonStepKindSchema,
+  MicroGameGenreSchema,
+  ModalitySchema,
+  PracticeActivityTypeSchema,
+  RewardTypeSchema,
   SensoryTagSchema,
-  ExperiencePurposeSchema,
+  TaskPurposeSchema,
 } from "./common";
 import { MathStageCodeSchema } from "./curriculum";
 
@@ -50,8 +50,6 @@ export const LessonStepSchema = z
 export const PracticeActivitySchema = z
   .object({
     id: z.string().uuid(),
-    knowledgePointId: z.string().uuid().optional(),
-    topicId: z.string().uuid().optional(),
     skillId: z.string().uuid().optional(),
     type: PracticeActivityTypeSchema,
     title: z.string().min(1).max(160),
@@ -62,7 +60,7 @@ export const PracticeActivitySchema = z
     assetIds: z.array(z.string().uuid()).default([]),
     modalities: z.array(ModalitySchema).default([]),
     sensoryTags: z.array(SensoryTagSchema).default([]),
-    purposes: z.array(ExperiencePurposeSchema).default([]),
+    purposes: z.array(TaskPurposeSchema).default([]),
     difficultyBand: z.enum(["intro", "core", "stretch"]).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -83,7 +81,7 @@ export const MicroGameSchema = z
     assetIds: z.array(z.string().uuid()).default([]),
     modalities: z.array(ModalitySchema).default([]),
     sensoryTags: z.array(SensoryTagSchema).default([]),
-    purposes: z.array(ExperiencePurposeSchema).default([]),
+    purposes: z.array(TaskPurposeSchema).default([]),
     difficultyBand: z.enum(["intro", "core", "stretch"]).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -117,7 +115,6 @@ export const CheckChartStatementSchema = z
     chartId: z.string().uuid().optional(),
     label: z.string().min(1).max(200),
     skillIds: z.array(z.string().uuid()).default([]),
-    knowledgePointIds: z.array(z.string().uuid()).default([]),
     threshold: CheckChartThresholdSchema.optional(),
     displayOrder: z.number().int().min(0).optional(),
     iconAssetId: z.string().uuid().optional(),

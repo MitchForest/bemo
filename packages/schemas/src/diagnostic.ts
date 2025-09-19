@@ -17,7 +17,6 @@ export const DiagnosticProbeSchema = z
   .object({
     id: z.string().uuid(),
     skillId: z.string().uuid(),
-    knowledgePointId: z.string().uuid().optional(),
     difficulty: z.number().min(0).max(1),
     prompt: DiagnosticPromptSchema,
     expectedLatencyMs: z.number().int().min(0).optional(),

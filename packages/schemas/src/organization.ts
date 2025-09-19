@@ -35,7 +35,7 @@ export const SubjectSchema = z
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
-  .openapi({ description: "Subject grouping topics and courses" });
+  .openapi({ description: "Subject grouping courses and skills" });
 
 export const CourseSchema = z
   .object({
@@ -89,7 +89,7 @@ export const LessonSchema = z
   .object({
     id: z.string().uuid(),
     unitId: z.string().uuid(),
-    topicId: z.string().uuid().optional(),
+    skillIds: z.array(z.string().uuid()).default([]),
     title: z.string().min(1).max(200),
     slug: z.string().min(1).max(120),
     focusStatement: z.string().optional(),
@@ -100,7 +100,7 @@ export const LessonSchema = z
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
-  .openapi({ description: "Lesson aligned to a topic" });
+  .openapi({ description: "Lesson aligned to one or more skills" });
 
 export const LessonSectionSchema = z
   .object({
@@ -109,7 +109,6 @@ export const LessonSectionSchema = z
     title: z.string().min(1).max(200),
     type: LessonSectionTypeSchema,
     sequence: z.number().int().min(0).default(0),
-    knowledgePointIds: z.array(z.string().uuid()).default([]),
     instructions: z.array(z.string()).default([]),
     mediaAssets: z.array(z.string()).default([]),
     expectedMinutes: z.number().int().min(0).optional(),
@@ -179,7 +178,7 @@ export const AssessmentSchema = z
     type: AssessmentTypeSchema,
     mode: AssessmentModeSchema,
     description: z.string().optional(),
-    entryTopicIds: z.array(z.string().uuid()).default([]),
+    entrySkillIds: z.array(z.string().uuid()).default([]),
     config: z.record(z.any()).default({}),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -190,8 +189,7 @@ export const AdaptiveAssessmentNodeSchema = z
   .object({
     id: z.string().uuid(),
     assessmentId: z.string().uuid(),
-    topicId: z.string().uuid(),
-    knowledgePointId: z.string().uuid().optional(),
+    skillId: z.string().uuid(),
     difficulty: z.number().int().min(1).max(5).default(3),
     nextOnCorrect: z.array(z.string().uuid()).default([]),
     nextOnIncorrect: z.array(z.string().uuid()).default([]),
@@ -212,7 +210,7 @@ export const AssessmentAttemptSchema = z
     completedAt: z.string().datetime().optional(),
     status: AssessmentAttemptStatusSchema,
     score: z.number().min(0).max(1).optional(),
-    masteryTopicId: z.string().uuid().optional(),
+    masterySkillId: z.string().uuid().optional(),
     summary: z.record(z.any()).optional(),
   })
   .openapi({ description: "Student assessment attempt" });
@@ -222,8 +220,7 @@ export const AssessmentResponseSchema = z
     id: z.string().uuid(),
     attemptId: z.string().uuid(),
     itemId: z.string().uuid().optional(),
-    topicId: z.string().uuid(),
-    knowledgePointId: z.string().uuid().optional(),
+    skillId: z.string().uuid(),
     result: z.enum(["correct", "incorrect", "partial", "skipped"]),
     latencyMs: z.number().int().min(0),
     payload: z.record(z.any()).optional(),

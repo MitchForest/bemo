@@ -1,11 +1,8 @@
+import { DEMO_STUDENTS } from "@/config/demo-students";
+import { fetchStudentProfileSummary } from "@/lib/api/dashboard";
+import type { StudentProfileSummary, Task } from "@repo/schemas";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import type { StudentProfileSummary, Task } from "@repo/schemas";
-import { seedSkills } from "@repo/curriculum";
-import { fetchStudentProfileSummary } from "@/lib/api/dashboard";
-import { DEMO_STUDENTS } from "@/config/demo-students";
-
-const SKILL_MAP = new Map(seedSkills.map((skill) => [skill.id, skill]));
 
 const ROSTER_PREVIEW = [
   { id: DEMO_STUDENTS.maya, name: "Maya", avatar: "🦊" },
@@ -61,7 +58,7 @@ function formatMinutes(estimated: number | undefined): string {
 }
 
 function describeTask(task: Task): string {
-  const skillTitle = SKILL_MAP.get(task.skillIds?.[0] ?? task.topicIds[0] ?? "")?.title;
+  const skillTitle = getPrimarySkillTitle(task);
   if (task.type === "lesson") {
     return skillTitle ? `Introduce ${skillTitle.toLowerCase()}.` : "Introduce new concept.";
   }
@@ -107,7 +104,7 @@ function buildStations(tasks: Task[]): TriageStationEntry[] {
           : index === 0
             ? "Teacher intro"
             : "Independent";
-    const skillTitle = SKILL_MAP.get(task.skillIds?.[0] ?? task.topicIds[0] ?? "")?.title;
+    const skillTitle = getPrimarySkillTitle(task);
     return {
       id: `${task.id}-${index}`,
       label: defaultLabel,
@@ -189,11 +186,7 @@ function buildRosterEntry(
   const dueSkill = summary.dueSkills[0];
   const focus =
     dueSkill?.title ??
-    SKILL_MAP.get(
-      summary.latestPlan?.tasks[0]?.skillIds?.[0] ??
-        summary.latestPlan?.tasks[0]?.topicIds?.[0] ??
-        "",
-    )?.title ??
+    getPrimarySkillTitle(summary.latestPlan?.tasks[0] ?? undefined) ??
     "Review core";
   const vibe =
     summary.motivation?.streak.current && summary.motivation.streak.current >= 5
@@ -210,12 +203,7 @@ function buildRosterEntry(
         : attention.reason === "Needs reteach"
           ? "Needs reteach"
           : "Focus boost",
-    mastery:
-      SKILL_MAP.get(
-        summary.latestPlan?.tasks[0]?.skillIds?.[0] ??
-          summary.latestPlan?.tasks[0]?.topicIds?.[0] ??
-          "",
-      )?.title ?? "Core skill",
+    mastery: getPrimarySkillTitle(summary.latestPlan?.tasks[0] ?? undefined) ?? "Core skill",
     focus: focus,
     vibe,
     summary,
@@ -228,6 +216,13 @@ function buildRosterEntry(
       evidence: buildEvidence(summary),
     },
   };
+}
+
+function getPrimarySkillTitle(task: Task | undefined): string | undefined {
+  if (!task) return undefined;
+  const metadata = task.metadata as Record<string, unknown> | undefined;
+  const title = metadata?.primarySkillTitle;
+  return typeof title === "string" ? title : undefined;
 }
 
 async function fetchRoster(): Promise<TeacherRosterLearner[]> {

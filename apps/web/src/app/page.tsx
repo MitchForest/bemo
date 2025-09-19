@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
+import { ParentDashboard } from "@/components/dashboard/parent-dashboard";
 import { StudentDashboard } from "@/components/dashboard/student-dashboard";
 import { TeacherDashboard } from "@/components/dashboard/teacher-dashboard";
-import { ParentDashboard } from "@/components/dashboard/parent-dashboard";
-import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
-import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { useMemo, useState } from "react";
 
 const personas = [
   {

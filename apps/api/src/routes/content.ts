@@ -1,65 +1,59 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import {
+  getSkillById,
+  getTaskTemplatesBySkill,
+  seedAssets,
+  seedCheckChartEntries,
+  seedCheckCharts,
+  seedJoyBreaks,
+  seedMicroGames,
+  seedMotivationRewards,
+  seedMotivationTracks,
+  seedPracticeActivities,
+} from "@repo/curriculum";
+import { getDb, isDatabaseConfigured } from "@repo/db";
 import type {
   Asset,
-  MicroGame,
-  PracticeActivity,
   CheckChart,
   CheckChartEntry,
-  MotivationTrack,
-  MotivationReward,
   JoyBreak,
-  KnowledgePointExperience,
+  MicroGame,
+  MotivationReward,
+  MotivationTrack,
+  PracticeActivity,
+  Skill,
+  SkillTaskTemplate,
 } from "@repo/schemas";
 import {
   AssetSchema,
-  MicroGameSchema,
-  PracticeActivitySchema,
-  CheckChartSchema,
   CheckChartEntrySchema,
-  MotivationTrackSchema,
-  MotivationRewardSchema,
+  CheckChartSchema,
   JoyBreakSchema,
-  TopicSchema,
-  KnowledgePointSchema,
-  KnowledgePointExperienceSchema,
+  MicroGameSchema,
+  MotivationRewardSchema,
+  MotivationTrackSchema,
+  PracticeActivitySchema,
+  SkillSchema,
+  SkillTaskTemplateSchema,
 } from "@repo/schemas";
-import {
-  seedAssets,
-  seedMicroGames,
-  seedPracticeActivities,
-  seedCheckCharts,
-  seedCheckChartEntries,
-  seedMotivationTracks,
-  seedMotivationRewards,
-  seedJoyBreaks,
-  seedKnowledgePointExperiences,
-  getTopicById,
-  getKnowledgePointsByTopic,
-  getExperiencesForTopic,
-} from "@repo/curriculum";
-import { db } from "@repo/db";
 
 const app = new OpenAPIHono();
 
 const AssetsResponseSchema = z.object({ items: z.array(AssetSchema) });
 const MicroGameResponseSchema = z.object({ items: z.array(MicroGameSchema) });
 const PracticeActivityResponseSchema = z.object({ items: z.array(PracticeActivitySchema) });
-const KnowledgePointExperienceResponseSchema = z.object({
-  items: z.array(KnowledgePointExperienceSchema),
-});
 const CheckChartResponseSchema = z.object({ items: z.array(CheckChartSchema) });
 const CheckChartEntryResponseSchema = z.object({ items: z.array(CheckChartEntrySchema) });
 const MotivationTrackResponseSchema = z.object({ items: z.array(MotivationTrackSchema) });
 const MotivationRewardResponseSchema = z.object({ items: z.array(MotivationRewardSchema) });
 const JoyBreakResponseSchema = z.object({ items: z.array(JoyBreakSchema) });
-const TopicDetailResponseSchema = z
+const SkillDetailResponseSchema = z
   .object({
-    topic: TopicSchema,
-    knowledgePoints: z.array(KnowledgePointSchema),
-    experiences: z.array(KnowledgePointExperienceSchema),
+    skill: SkillSchema,
+    taskTemplates: z.array(SkillTaskTemplateSchema),
   })
-  .openapi({ description: "Topic detail with knowledge points and experiences" });
+  .openapi({ description: "Skill detail with task templates" });
 const MicroGameDetailResponseSchema = z
   .object({
     game: MicroGameSchema,
@@ -67,7 +61,7 @@ const MicroGameDetailResponseSchema = z
   .openapi({ description: "Micro-game descriptor" });
 
 async function tryFetch<T>(query: () => Promise<T>, fallback: T): Promise<T> {
-  if (!process.env.DATABASE_URL) {
+  if (!isDatabaseConfigured()) {
     return fallback;
   }
   try {
@@ -78,6 +72,110 @@ async function tryFetch<T>(query: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+type SkillDetail = {
+  skill: Skill;
+  taskTemplates: SkillTaskTemplate[];
+};
+
+async function fetchSkillDetailFromDatabase(id: string): Promise<SkillDetail> {
+  const db = getDb();
+
+  const skillRow = await db
+    .selectFrom("skills")
+    .select([
+      "id",
+      "title",
+      "domain",
+      "strand",
+      "grade_band",
+      "stage_code",
+      "description",
+      "interference_group",
+      "expected_time_seconds",
+      "check_chart_tags",
+      "assets",
+      "subject_id",
+      "course_id",
+      "lesson_id",
+    ])
+    .where("id", "=", id)
+    .executeTakeFirst();
+
+  if (!skillRow) {
+    throw new Error("skill:not_found");
+  }
+
+  const prereqRows = await db
+    .selectFrom("skill_prerequisites")
+    .select(["skill_id", "prerequisite_skill_id", "gate"])
+    .where("skill_id", "=", id)
+    .execute();
+
+  const encompassingRows = await db
+    .selectFrom("skill_encompassing")
+    .select(["child_skill_id", "parent_skill_id", "weight"])
+    .where("child_skill_id", "=", id)
+    .execute();
+
+  const skill: Skill = {
+    id: skillRow.id,
+    title: skillRow.title,
+    domain: skillRow.domain as Skill["domain"],
+    strand: skillRow.strand,
+    gradeBand: skillRow.grade_band as Skill["gradeBand"],
+    stageCode: (skillRow.stage_code ?? undefined) as Skill["stageCode"],
+    description: skillRow.description ?? undefined,
+    subjectId: skillRow.subject_id ?? undefined,
+    courseId: skillRow.course_id ?? undefined,
+    lessonId: skillRow.lesson_id ?? undefined,
+    prerequisites: prereqRows.map((row) => ({
+      skillId: row.prerequisite_skill_id,
+      gate: row.gate as "AND" | "OR",
+    })),
+    encompassing: encompassingRows.map((row) => ({
+      skillId: row.parent_skill_id,
+      weight: Number(row.weight),
+    })),
+    interferenceGroup: skillRow.interference_group ?? undefined,
+    expectedTimeSeconds: Number(skillRow.expected_time_seconds),
+    checkChartTags: (skillRow.check_chart_tags ?? []) as string[],
+    assets: (skillRow.assets ?? []) as string[],
+  };
+
+  const templateRows = await db
+    .selectFrom("skill_task_templates")
+    .select([
+      "id",
+      "skill_id",
+      "intent",
+      "title",
+      "xp_award",
+      "estimated_minutes",
+      "modalities",
+      "sensory_tags",
+      "definition",
+      "metadata",
+    ])
+    .where("skill_id", "=", id)
+    .execute();
+
+  const taskTemplates: SkillTaskTemplate[] = templateRows.map((row) => ({
+    id: row.id,
+    skillId: row.skill_id,
+    intent: row.intent as SkillTaskTemplate["intent"],
+    title: row.title,
+    xpAward: Number(row.xp_award ?? 0),
+    estimatedMinutes: Number(row.estimated_minutes ?? 1),
+    modalities: (row.modalities ?? []) as SkillTaskTemplate["modalities"],
+    sensoryTags: (row.sensory_tags ?? []) as SkillTaskTemplate["sensoryTags"],
+    steps: ((row.definition ?? {}) as { steps?: SkillTaskTemplate["steps"] }).steps ?? [],
+    metadata: (row.metadata ?? {}) as SkillTaskTemplate["metadata"],
+  }));
+
+  return { skill, taskTemplates };
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapAsset = (row: any): Asset => ({
   id: row.id,
   organizationId: row.organization_id ?? undefined,
@@ -93,6 +191,7 @@ const mapAsset = (row: any): Asset => ({
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapMicroGame = (row: any): MicroGame => ({
   id: row.id,
   slug: row.slug,
@@ -112,10 +211,9 @@ const mapMicroGame = (row: any): MicroGame => ({
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapPracticeActivity = (row: any): PracticeActivity => ({
   id: row.id,
-  knowledgePointId: row.knowledge_point_id ?? undefined,
-  topicId: row.topic_id ?? undefined,
   skillId: row.skill_id ?? undefined,
   type: row.type,
   title: row.title,
@@ -132,6 +230,7 @@ const mapPracticeActivity = (row: any): PracticeActivity => ({
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapCheckChartEntry = (row: any): CheckChartEntry => {
   const threshold =
     row.threshold && Object.keys(row.threshold).length > 0 ? row.threshold : undefined;
@@ -140,25 +239,13 @@ const mapCheckChartEntry = (row: any): CheckChartEntry => {
       ? row.skill_ids
       : row.skill_id
         ? [row.skill_id]
-        : Array.isArray(row.topic_ids) && row.topic_ids.length > 0
-          ? row.topic_ids
-          : row.topic_id
-            ? [row.topic_id]
-            : [];
-  const knowledgePointIds =
-    Array.isArray(row.knowledge_point_ids) && row.knowledge_point_ids.length > 0
-      ? row.knowledge_point_ids
-      : row.knowledge_point_id
-        ? [row.knowledge_point_id]
         : [];
-
   return {
     id: row.id,
     chartId: row.chart_id,
     label: row.statement,
     displayOrder: row.display_order ?? row.sequence ?? 0,
     skillIds,
-    knowledgePointIds,
     threshold,
     iconAssetId: row.icon_asset_id ?? undefined,
     badgeId: row.badge_id ?? undefined,
@@ -168,6 +255,7 @@ const mapCheckChartEntry = (row: any): CheckChartEntry => {
   };
 };
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapCheckChart = (row: any, statements: CheckChartEntry[]): CheckChart => ({
   id: row.id,
   organizationId: row.organization_id ?? undefined,
@@ -184,6 +272,7 @@ const mapCheckChart = (row: any, statements: CheckChartEntry[]): CheckChart => (
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapMotivationTrack = (row: any): MotivationTrack => ({
   id: row.id,
   organizationId: row.organization_id ?? undefined,
@@ -195,6 +284,7 @@ const mapMotivationTrack = (row: any): MotivationTrack => ({
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapMotivationReward = (row: any): MotivationReward => ({
   id: row.id,
   trackId: row.track_id ?? undefined,
@@ -209,6 +299,7 @@ const mapMotivationReward = (row: any): MotivationReward => ({
   updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
 });
 
+// biome-ignore lint/suspicious/noExplicitAny: Database row type
 const mapJoyBreak = (row: any): JoyBreak => ({
   id: row.id,
   title: row.title,
@@ -239,6 +330,7 @@ const listAssetsRoute = createRoute({
 
 app.openapi(listAssetsRoute, async (c) => {
   const items = await tryFetch<Asset[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("assets").selectAll().execute();
     return rows.map(mapAsset);
   }, seedAssets);
@@ -265,6 +357,7 @@ const listMicroGamesRoute = createRoute({
 
 app.openapi(listMicroGamesRoute, async (c) => {
   const items = await tryFetch<MicroGame[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("micro_games").selectAll().execute();
     return rows.map(mapMicroGame);
   }, seedMicroGames);
@@ -291,33 +384,11 @@ const listPracticeActivitiesRoute = createRoute({
 
 app.openapi(listPracticeActivitiesRoute, async (c) => {
   const items = await tryFetch<PracticeActivity[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("practice_activities").selectAll().execute();
     return rows.map(mapPracticeActivity);
   }, seedPracticeActivities);
 
-  return c.json({ items }, 200);
-});
-
-const listKnowledgePointExperiencesRoute = createRoute({
-  method: "get",
-  path: "/api/content/experiences",
-  tags: ["Content"],
-  summary: "List knowledge point experiences",
-  responses: {
-    200: {
-      description: "Knowledge point experience variants",
-      content: {
-        "application/json": {
-          schema: KnowledgePointExperienceResponseSchema,
-        },
-      },
-    },
-  },
-});
-
-app.openapi(listKnowledgePointExperiencesRoute, async (c) => {
-  // Experiences currently live in seed content only; return them directly until writable storage ships.
-  const items: KnowledgePointExperience[] = seedKnowledgePointExperiences;
   return c.json({ items }, 200);
 });
 
@@ -340,6 +411,7 @@ const listCheckChartsRoute = createRoute({
 
 app.openapi(listCheckChartsRoute, async (c) => {
   const items = await tryFetch<CheckChart[]>(async () => {
+    const db = getDb();
     const [charts, entries] = await Promise.all([
       db.selectFrom("check_charts").selectAll().orderBy("display_order").execute(),
       db
@@ -393,6 +465,7 @@ app.openapi(listCheckChartEntriesRoute, async (c) => {
     (entry) => entry.chartId === chartId,
   ) as CheckChartEntry[];
   const items = await tryFetch<CheckChartEntry[]>(async () => {
+    const db = getDb();
     const rows = await db
       .selectFrom("check_chart_entries")
       .selectAll()
@@ -424,6 +497,7 @@ const listMotivationTracksRoute = createRoute({
 
 app.openapi(listMotivationTracksRoute, async (c) => {
   const items = await tryFetch<MotivationTrack[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("motivation_tracks").selectAll().execute();
     return rows.map(mapMotivationTrack);
   }, seedMotivationTracks);
@@ -450,6 +524,7 @@ const listMotivationRewardsRoute = createRoute({
 
 app.openapi(listMotivationRewardsRoute, async (c) => {
   const items = await tryFetch<MotivationReward[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("motivation_rewards").selectAll().execute();
     return rows.map(mapMotivationReward);
   }, seedMotivationRewards);
@@ -476,6 +551,7 @@ const listJoyBreaksRoute = createRoute({
 
 app.openapi(listJoyBreaksRoute, async (c) => {
   const items = await tryFetch<JoyBreak[]>(async () => {
+    const db = getDb();
     const rows = await db.selectFrom("joy_breaks").selectAll().execute();
     return rows.map(mapJoyBreak);
   }, seedJoyBreaks);
@@ -483,20 +559,20 @@ app.openapi(listJoyBreaksRoute, async (c) => {
   return c.json({ items }, 200);
 });
 
-const topicDetailRoute = createRoute({
+const skillDetailRoute = createRoute({
   method: "get",
-  path: "/api/content/topic/:id",
+  path: "/api/content/skill/:id",
   tags: ["Content"],
-  summary: "Get topic detail",
+  summary: "Get skill detail",
   request: {
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
     200: {
-      description: "Topic detail",
+      description: "Skill detail",
       content: {
         "application/json": {
-          schema: TopicDetailResponseSchema,
+          schema: SkillDetailResponseSchema,
         },
       },
     },
@@ -511,16 +587,26 @@ const topicDetailRoute = createRoute({
   },
 });
 
-app.openapi(topicDetailRoute, async (c) => {
+app.openapi(skillDetailRoute, async (c) => {
   const { id } = c.req.valid("param");
-  const topic = getTopicById(id);
-  if (!topic) {
-    return c.json({ error: "Topic not found" }, 404);
+
+  const fallbackDetail = (() => {
+    const skill = getSkillById(id);
+    if (!skill) return null;
+    const taskTemplates = getTaskTemplatesBySkill(id);
+    return { skill, taskTemplates } as SkillDetail;
+  })();
+
+  const detail = await tryFetch<SkillDetail | null>(
+    () => fetchSkillDetailFromDatabase(id),
+    fallbackDetail,
+  );
+
+  if (!detail) {
+    return c.json({ error: "Skill not found" }, 404);
   }
 
-  const knowledgePoints = getKnowledgePointsByTopic(topic.id);
-  const experiences = getExperiencesForTopic(topic.id);
-  return c.json({ topic, knowledgePoints, experiences }, 200);
+  return c.json(detail, 200);
 });
 
 const microGameDetailRoute = createRoute({

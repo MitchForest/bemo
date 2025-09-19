@@ -1,94 +1,89 @@
 # @repo/api
 
-Bemo's Bun + Hono REST API with Better Auth, shared schemas, and auto-generated OpenAPI docs.
+Bun + Hono API for the Bemo platform. Every route is wired to the shared schemas, so the engine, curriculum, and client stay in sync.
 
 ## Highlights
 
-- **End-to-end types**: Every handler consumes/returns `@repo/schemas` Zod definitions.
-- **Auth-aware**: Better Auth sessions available inside every route via `auth.api.getSession`.
-- **Documentation-first**: OpenAPI, Swagger UI, and Scalar docs ship with the server.
-- **Future-proof**: Engine calls are imported from `@repo/engine`, keeping business logic out of route files.
+- **Zero-setup dev mode** – without `DATABASE_URL` the API serves seeded data, the engine works entirely in-memory, and auth returns a deterministic demo session.
+- **Typed contracts** – requests and responses are validated with the same Zod schemas used by the engine and React app.
+- **First-class docs** – OpenAPI JSON, Swagger UI, and Scalar reference are generated directly from the route definitions.
+- **Thin routes** – business logic lives in `@repo/engine`; routes simply validate, authorise, and map inputs.
 
-## Active route groups
+## Endpoints
 
-| Route file | Base path | Description |
-| ---------- | --------- | ----------- |
-| `routes/plan.ts` | `/api/plan` | Learner playlists with stats, student state snapshots, and motivation preview. |
-| `routes/evidence.ts` | `/api/evidence` | Evidence ingestion returning updated spaced-repetition state and XP. |
-| `routes/diagnostic.ts` | `/api/diagnostic/*` | Fetch next math probe and submit answers with provisional mastery. |
-| `routes/motivation.ts` | `/api/motivation*` | Motivation summary, leagues/squads, quests, time-back ledger, reward claiming, and digests. |
-| `routes/profile.ts` | `/api/profile` | Dashboard-ready learner summary (mastery, plan, check charts). |
-| `routes/reports.ts` | `/api/report/weekly` | Weekly XP/minutes digest with highlights and coach actions. |
-| `routes/content.ts` | `/api/content/*` | Seeded content catalog (topics, practice activities, motivation assets, etc.). |
-| `routes/auth.ts` | `/api/auth/*` | Better Auth handlers (proxied). |
+| File | Path | Notes |
+| --- | --- | --- |
+| `routes/plan.ts` | `/api/plan` | Learner plan with tasks, stats, and motivation preview. |
+| `routes/evidence.ts` | `/api/evidence` | Submit evidence events and receive updated skill states. |
+| `routes/diagnostic.ts` | `/api/diagnostic/*` | Fetch/submit adaptive diagnostic probes. |
+| `routes/motivation.ts` | `/api/motivation*` | Motivation summary, quests, leagues, time-back ledger. |
+| `routes/profile.ts` | `/api/profile` | Student profile including mastery, plan snapshot, check charts. |
+| `routes/reports.ts` | `/api/report/weekly` | Weekly digest for adults (XP, minutes, highlights). |
+| `routes/content.ts` | `/api/content/*` | Curriculum, assets, and motivation catalogues. |
+| `routes/auth.ts` | `/api/auth/*` | Better Auth handler (returns a stub session when auth is disabled). |
 
-## Running locally
+## Local development
 
 ```bash
 bun install
-bun run dev        # start API with Hono dev server
-bun run build      # production build
-bun run start      # run built server
-bun run typecheck  # strict TypeScript check
+bun run dev --filter @repo/api  # http://localhost:8000
 ```
 
-Swagger and Scalar docs are served at:
-- `http://localhost:3001/swagger`
-- `http://localhost:3001/reference`
-- Raw OpenAPI spec: `http://localhost:3001/doc`
+Docs are available at:
+
+- Swagger UI: http://localhost:8000/swagger
+- Scalar reference: http://localhost:8000/reference
+- OpenAPI JSON: http://localhost:8000/doc
+
+### Database vs. in-memory mode
+
+| Scenario | Behaviour |
+| --- | --- |
+| `DATABASE_URL` set | Routes read/write through Kysely. Better Auth uses the shared Postgres connection. |
+| `DATABASE_URL` missing | Engine + API fall back to rich curriculum seeds. Auth returns a demo session (the routes stay open for local development). |
+
+Migrations, seed data, and type generation all live in `packages/db`.
 
 ## Adding a route
 
-1. **Define schemas** (or reuse existing) in `@repo/schemas`.
-2. **Create the Hono route** using `createRoute` and `.openapi(...)` for typed handlers.
-3. **Import engine/business logic** from the relevant package—routes should stay thin.
-4. **Register** the route in `src/app.ts` with `app.route("/", yourRoutes);`.
+1. Define/extend the contract in `@repo/schemas`.
+2. Implement the route using `createRoute` from `@hono/zod-openapi`.
+3. Delegate to the engine/curriculum packages—avoid embedding business logic in the route.
+4. Register the route in `src/app.ts`.
 
-Example:
 ```ts
-import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { SomeSchema, SomeResponseSchema } from "@repo/schemas";
-import { doWork } from "@repo/engine";
-
-const app = new OpenAPIHono();
-
-const someRoute = createRoute({
+const sampleRoute = createRoute({
   method: "post",
-  path: "/api/example",
-  request: { body: { content: { "application/json": { schema: SomeSchema } } } },
-  responses: { 200: { content: { "application/json": { schema: SomeResponseSchema } } } },
+  path: "/api/sample",
+  request: { body: { content: { "application/json": { schema: SampleRequestSchema } } } },
+  responses: { 200: { content: { "application/json": { schema: SampleResponseSchema } } } },
 });
 
-app.openapi(someRoute, async (c) => {
+app.openapi(sampleRoute, async (c) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: "Unauthorized" }, 401);
 
   const payload = c.req.valid("json");
-  const result = await doWork({ studentId: session.user.id, payload });
+  const result = await doSampleWork({ studentId: session.user.id, payload });
   return c.json(result, 200);
 });
-
-export default app;
 ```
 
-## Project structure
+## Structure
 
 ```
 src/
-├── app.ts              # Hono app + route registration
-├── index.ts            # Bun entry point
-├── openapi.ts          # Shared OpenAPI configuration
-├── routes/             # Route groups (all OpenAPI-aware)
-└── types.ts            # Env typings
+├── app.ts      # Hono instance + route registration
+├── index.ts    # Bun entry point
+├── routes/     # Route groups
+└── (docs via app.ts) # OpenAPI configuration lives alongside the app wiring
 ```
 
-## Testing & QA
-
-The API relies on the engine's Bun tests and TypeScript checks:
+## Quality gates
 
 ```bash
-bun test packages/engine               # ensures engine logic correctness
-bun x tsc --noEmit -p apps/api         # route-level type checking
+bun x tsc --noEmit -p apps/api          # route-level type checking
+bun test packages/engine                # engine logic + in-memory mode
 ```
 
-When wiring persistence back in, add integration tests that call the Hono handlers via `app.request`. For now the in-memory fallbacks mean no database is required in development.
+When persistence-specific behaviour is added, add dedicated tests that hit the Hono app via `app.request()`.

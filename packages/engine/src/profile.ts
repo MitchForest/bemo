@@ -1,15 +1,15 @@
-import type { StudentProfileSummary, StudentSkillState, Skill } from "@repo/schemas";
-import { seedSkills, seedCheckCharts } from "@repo/curriculum";
-import { loadStudentProfile, loadStudentSkillStates } from "./data";
-import { getPlan } from "./plan";
+import { seedCheckCharts } from "@repo/curriculum";
+import type { Skill, StudentProfileSummary, StudentSkillState } from "@repo/schemas";
+import { getAllSkills, loadStudentProfile, loadStudentSkillStates } from "./data";
 import { getMotivationSummary } from "./motivation";
+import { getPlan } from "./plan";
 
 const SPEED_LATENCY_THRESHOLD_MS = 3200;
 const SPEED_FACTOR_THRESHOLD = 1.1;
 
 export async function getStudentProfileSummary(studentId: string): Promise<StudentProfileSummary> {
   const profile = await loadStudentProfile(studentId);
-  const skills = seedSkills;
+  const skills = await getAllSkills();
   const states = await loadStudentSkillStates(studentId, skills);
   const stateMap = new Map(states.map((state) => [state.skillId, state]));
   const now = Date.now();
