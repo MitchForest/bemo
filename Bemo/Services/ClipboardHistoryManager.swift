@@ -1,0 +1,203 @@
+import Foundation
+import AppKit
+
+// MARK: - Clipboard History Manager
+
+@MainActor
+@Observable
+final class ClipboardHistoryManager {
+    static let shared = ClipboardHistoryManager()
+
+    // MARK: - State
+
+    private(set) var items: [ClipboardItem] = []
+    var isPaused: Bool = false
+    private(set) var isVisible: Bool = false
+
+    // MARK: - Configuration
+
+    let maxItems = 10
+    private let storageKey = "bemo.clipboard.history"
+
+    // MARK: - Callbacks
+
+    var onItemsChanged: (() -> Void)?
+    var onShouldShowDock: (() -> Void)?
+    var onShouldHideDock: (() -> Void)?
+
+    // MARK: - Pasteboard Monitoring
+
+    private var pasteboardMonitor: Timer?
+    private var lastChangeCount: Int = 0
+
+    // MARK: - Initialization
+
+    private init() {
+        loadFromStorage()
+        startMonitoringPasteboard()
+    }
+
+    // MARK: - Public API
+
+    /// Add an item to clipboard history and copy to system clipboard
+    func add(_ item: ClipboardItem) {
+        guard !isPaused else { return }
+
+        // Remove duplicate if exists (same content)
+        items.removeAll { $0.content == item.content }
+
+        // Add to front
+        items.insert(item, at: 0)
+
+        // Trim to max size
+        if items.count > maxItems {
+            items = Array(items.prefix(maxItems))
+        }
+
+        // Copy to system clipboard
+        ClipboardService.shared.copy(text: item.content)
+
+        // Persist
+        saveToStorage()
+
+        // Notify
+        onItemsChanged?()
+
+        // Show dock
+        showDock()
+    }
+
+    /// Add OCR result
+    func addOCR(_ text: String) {
+        let item = ClipboardItem(type: .ocr, content: text)
+        add(item)
+    }
+
+    /// Add file path
+    func addFilePath(_ path: String, fileName: String? = nil) {
+        let item = ClipboardItem(
+            type: .filePath,
+            content: path,
+            sourceInfo: fileName ?? URL(fileURLWithPath: path).lastPathComponent
+        )
+        add(item)
+    }
+
+    /// Add file contents
+    func addFileContents(_ contents: String, fileName: String, originalPath: String? = nil) {
+        let item = ClipboardItem(
+            type: .fileContents,
+            content: contents,
+            sourceInfo: fileName,
+            originalPath: originalPath
+        )
+        add(item)
+    }
+
+    /// Copy an existing item again (moves to top)
+    func copyAgain(_ item: ClipboardItem) {
+        // Remove from current position
+        items.removeAll { $0.id == item.id }
+
+        // Create new item with updated timestamp
+        let newItem = ClipboardItem(
+            type: item.type,
+            content: item.content,
+            sourceInfo: item.sourceInfo,
+            originalPath: item.originalPath
+        )
+
+        // Add to front
+        items.insert(newItem, at: 0)
+
+        // Copy to clipboard
+        ClipboardService.shared.copy(text: item.content)
+
+        // Persist
+        saveToStorage()
+
+        // Notify
+        onItemsChanged?()
+    }
+
+    /// Delete an item
+    func delete(_ item: ClipboardItem) {
+        items.removeAll { $0.id == item.id }
+        saveToStorage()
+        onItemsChanged?()
+    }
+
+    /// Clear all history
+    func clearAll() {
+        items.removeAll()
+        saveToStorage()
+        onItemsChanged?()
+    }
+
+    // MARK: - Dock Visibility
+
+    func showDock() {
+        guard !isVisible else { return }
+        isVisible = true
+        onShouldShowDock?()
+    }
+
+    func hideDock() {
+        guard isVisible else { return }
+        isVisible = false
+        onShouldHideDock?()
+    }
+
+    func toggleDock() {
+        if isVisible {
+            hideDock()
+        } else {
+            showDock()
+        }
+    }
+
+    // MARK: - Pasteboard Monitoring
+
+    private func startMonitoringPasteboard() {
+        lastChangeCount = NSPasteboard.general.changeCount
+
+        // Poll pasteboard for external changes (e.g., user pastes somewhere)
+        pasteboardMonitor = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.checkPasteboardChanges()
+            }
+        }
+    }
+
+    private func checkPasteboardChanges() {
+        let currentCount = NSPasteboard.general.changeCount
+
+        if currentCount != lastChangeCount {
+            // Pasteboard changed - user might have pasted
+            // We could detect paste events here, but for now we just track the change
+            lastChangeCount = currentCount
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func saveToStorage() {
+        do {
+            let data = try JSONEncoder().encode(items)
+            UserDefaults.standard.set(data, forKey: storageKey)
+        } catch {
+            print("Failed to save clipboard history: \(error)")
+        }
+    }
+
+    private func loadFromStorage() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+
+        do {
+            items = try JSONDecoder().decode([ClipboardItem].self, from: data)
+        } catch {
+            print("Failed to load clipboard history: \(error)")
+            items = []
+        }
+    }
+}

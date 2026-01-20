@@ -1,0 +1,509 @@
+import AppKit
+import SwiftUI
+
+// MARK: - Clipboard Dock Controller
+
+@MainActor
+final class ClipboardDockController {
+    static let shared = ClipboardDockController()
+
+    private var panel: NSPanel?
+    private var deactivateObserver: NSObjectProtocol?
+    private var isAnimating = false
+
+    private let panelWidth: CGFloat = 320
+    private let panelHeight: CGFloat = 420
+
+    private init() {
+        setupCallbacks()
+    }
+
+    // MARK: - Setup
+
+    private func setupCallbacks() {
+        ClipboardHistoryManager.shared.onShouldShowDock = { [weak self] in
+            self?.show()
+        }
+
+        ClipboardHistoryManager.shared.onShouldHideDock = { [weak self] in
+            self?.hide()
+        }
+    }
+
+    // MARK: - Show/Hide
+
+    func show() {
+        guard panel == nil, !isAnimating else { return }
+
+        isAnimating = true
+
+        // Create panel
+        let panel = createPanel()
+        self.panel = panel
+
+        // Position off-screen to the right
+        guard let screen = NSScreen.main else { return }
+        let startFrame = CGRect(
+            x: screen.visibleFrame.maxX,
+            y: screen.visibleFrame.midY - panelHeight / 2,
+            width: panelWidth,
+            height: panelHeight
+        )
+        panel.setFrame(startFrame, display: false)
+
+        // Show panel
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+
+        // Animate in
+        let endFrame = CGRect(
+            x: screen.visibleFrame.maxX - panelWidth - 16,
+            y: startFrame.minY,
+            width: panelWidth,
+            height: panelHeight
+        )
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(endFrame, display: true)
+        }, completionHandler: {
+            Task { @MainActor [weak self] in
+                self?.isAnimating = false
+                self?.setupDeactivateMonitor()
+            }
+        })
+    }
+
+    func hide() {
+        guard let panel = panel, !isAnimating else { return }
+
+        isAnimating = true
+        removeDeactivateMonitor()
+
+        // Animate out
+        guard let screen = NSScreen.main else { return }
+        let endFrame = CGRect(
+            x: screen.visibleFrame.maxX,
+            y: panel.frame.minY,
+            width: panelWidth,
+            height: panelHeight
+        )
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().setFrame(endFrame, display: true)
+        }, completionHandler: {
+            Task { @MainActor [weak self] in
+                panel.orderOut(nil)
+                self?.panel = nil
+                self?.isAnimating = false
+            }
+        })
+    }
+
+    func toggle() {
+        if panel != nil {
+            ClipboardHistoryManager.shared.hideDock()
+        } else {
+            ClipboardHistoryManager.shared.showDock()
+        }
+    }
+
+    // MARK: - Panel Creation
+
+    private func createPanel() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: CGRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient]
+
+        let contentView = ClipboardDockView(onClose: {
+            ClipboardHistoryManager.shared.hideDock()
+        })
+
+        panel.contentView = NSHostingView(rootView: contentView)
+
+        return panel
+    }
+
+    // MARK: - Deactivate Detection
+
+    private func setupDeactivateMonitor() {
+        deactivateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard self?.panel != nil else { return }
+                ClipboardHistoryManager.shared.hideDock()
+            }
+        }
+    }
+
+    private func removeDeactivateMonitor() {
+        if let observer = deactivateObserver {
+            NotificationCenter.default.removeObserver(observer)
+            deactivateObserver = nil
+        }
+    }
+}
+
+// MARK: - Clipboard Dock View
+
+struct ClipboardDockView: View {
+    let onClose: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var manager = ClipboardHistoryManager.shared
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            headerView
+
+            Divider()
+                .opacity(0.5)
+
+            // Items list
+            if manager.items.isEmpty {
+                emptyStateView
+            } else {
+                itemsListView
+            }
+
+            Divider()
+                .opacity(0.5)
+
+            // Footer
+            footerView
+        }
+        .frame(width: 320, height: 420)
+        .glassPanelStyle(cornerRadius: BemoTheme.panelRadius)
+    }
+
+    // MARK: - Header
+
+    private var headerView: some View {
+        HStack(spacing: 10) {
+            // App icon
+            Image(systemName: "square.stack.fill")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Text("Clipboard")
+                .font(.system(size: 14, weight: .semibold))
+
+            // Item count badge
+            if !manager.items.isEmpty {
+                Text("\(manager.items.count)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(CircleIconButtonStyle(size: 24, tint: .secondary))
+        }
+        .padding(.horizontal, BemoTheme.panelPadding + 4)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 40, weight: .ultraLight))
+                .foregroundStyle(.tertiary)
+
+            VStack(spacing: 4) {
+                Text("No items yet")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                Text("⌘⇧2 to capture screen text")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Items List
+
+    private var itemsListView: some View {
+        ScrollView {
+            LazyVStack(spacing: BemoTheme.itemSpacing) {
+                ForEach(manager.items) { item in
+                    ClipboardItemView(item: item)
+                }
+            }
+            .padding(BemoTheme.panelPadding)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerView: some View {
+        HStack {
+            // Clear all button
+            Button {
+                manager.clearAll()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(CircleIconButtonStyle(size: 26, tint: .red, isDestructive: true))
+            .disabled(manager.items.isEmpty)
+            .opacity(manager.items.isEmpty ? 0.4 : 1)
+
+            Spacer()
+
+            Text(manager.isPaused ? "Paused" : "")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+
+            // Pause/Resume button
+            Button {
+                manager.isPaused.toggle()
+            } label: {
+                Image(systemName: manager.isPaused ? "play.fill" : "pause.fill")
+            }
+            .buttonStyle(CircleIconButtonStyle(size: 26, tint: manager.isPaused ? .orange : .secondary))
+        }
+        .padding(.horizontal, BemoTheme.panelPadding + 4)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Clipboard Item View
+
+struct ClipboardItemView: View {
+    let item: ClipboardItem
+
+    @State private var isExpanded = false
+    @State private var isHovered = false
+
+    private let manager = ClipboardHistoryManager.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Main row
+            mainRow
+
+            // Expanded content
+            if isExpanded {
+                expandedContent
+            }
+        }
+        .glassCardStyle(isHovered: isHovered, accentColor: typeColor, cornerRadius: BemoTheme.cardRadius)
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+    }
+
+    // MARK: - Content Preview Text
+
+    private var contentPreview: String {
+        let trimmed = item.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let singleLine = trimmed.replacingOccurrences(of: "\n", with: " ")
+        if singleLine.count > 50 {
+            return String(singleLine.prefix(47)) + "..."
+        }
+        return singleLine
+    }
+
+    // MARK: - Main Row
+
+    private var mainRow: some View {
+        HStack(spacing: 10) {
+            // Clickable area (everything except copy button)
+            HStack(spacing: 10) {
+                // Type badge
+                typeBadge
+
+                // Content preview
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(contentPreview)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        Text(item.type.label)
+                            .foregroundStyle(typeColor)
+                        Text("•")
+                        Text(item.relativeTime)
+
+                        // Show filename for file items
+                        if let fileName = item.fileName {
+                            Text("•")
+                            Text(fileName)
+                                .lineLimit(1)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                }
+
+                Spacer(minLength: 8)
+
+                // Expand indicator
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(isExpanded ? typeColor : Color.secondary.opacity(0.5))
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    isExpanded.toggle()
+                }
+            }
+
+            // Copy button - separate, not part of the tap area
+            Button(action: copyItem) {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(FilledCircleIconButtonStyle(size: 26, tint: typeColor))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Type Badge
+
+    private var typeBadge: some View {
+        Image(systemName: item.type.icon)
+            .typeBadgeStyle(color: typeColor, size: 26)
+    }
+
+    private var typeColor: Color {
+        BemoTheme.color(for: item.type)
+    }
+
+    // MARK: - Copy Action
+
+    private func copyItem() {
+        manager.copyAgain(item)
+        ToastController.shared.showCopied(item: item)
+    }
+
+    // MARK: - Open Action
+
+    private func openItem() {
+        switch item.type {
+        case .filePath:
+            // Open the file directly
+            let url = URL(fileURLWithPath: item.content)
+            NSWorkspace.shared.open(url)
+
+        case .fileContents:
+            // Open original file if available, otherwise create temp file
+            if let originalPath = item.originalPath {
+                let url = URL(fileURLWithPath: originalPath)
+                NSWorkspace.shared.open(url)
+            } else {
+                openAsTemporaryFile()
+            }
+
+        case .ocr:
+            // Create temp file and open in text editor
+            openAsTemporaryFile()
+        }
+    }
+
+    private func openAsTemporaryFile() {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName: String
+
+        switch item.type {
+        case .ocr:
+            fileName = "bemo-ocr-\(item.id.uuidString.prefix(8)).txt"
+        case .fileContents:
+            fileName = item.sourceInfo ?? "bemo-content-\(item.id.uuidString.prefix(8)).txt"
+        case .filePath:
+            fileName = "bemo-path-\(item.id.uuidString.prefix(8)).txt"
+        }
+
+        let fileURL = tempDir.appendingPathComponent(fileName)
+
+        do {
+            try item.content.write(to: fileURL, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.open(fileURL)
+        } catch {
+            ToastController.shared.show(message: "Error", preview: "Could not create temp file", type: .error)
+        }
+    }
+
+    // MARK: - Expanded Content
+
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+                .opacity(0.5)
+                .padding(.horizontal, BemoTheme.cardPadding)
+
+            // Full content in scrollable area
+            ScrollView {
+                Text(item.content)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 150)
+            .padding(.horizontal, BemoTheme.cardPadding)
+            .background(Color.secondary.opacity(0.03))
+
+            // Action bar
+            HStack(spacing: 6) {
+                Button {
+                    copyItem()
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .buttonStyle(FilledCircleIconButtonStyle(size: 28, tint: typeColor))
+
+                Button {
+                    openItem()
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(CircleIconButtonStyle(size: 28, tint: .secondary))
+
+                Button {
+                    manager.delete(item)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(CircleIconButtonStyle(size: 28, tint: .red, isDestructive: true))
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isExpanded = false
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .buttonStyle(CircleIconButtonStyle(size: 28, tint: typeColor))
+            }
+            .padding(.horizontal, BemoTheme.cardPadding)
+            .padding(.bottom, BemoTheme.cardPadding)
+        }
+    }
+}
