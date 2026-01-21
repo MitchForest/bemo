@@ -1,10 +1,15 @@
 import SwiftUI
 
 struct MenubarView: View {
-    let onCaptureScreen: () -> Void
+    let onOCRCapture: () -> Void
+    let onScreenshotCapture: () -> Void
 
-    init(onCaptureScreen: @escaping () -> Void) {
-        self.onCaptureScreen = onCaptureScreen
+    init(
+        onOCRCapture: @escaping () -> Void,
+        onScreenshotCapture: @escaping () -> Void
+    ) {
+        self.onOCRCapture = onOCRCapture
+        self.onScreenshotCapture = onScreenshotCapture
     }
 
     var body: some View {
@@ -27,15 +32,25 @@ struct MenubarView: View {
             VStack(spacing: 4) {
                 ActionButton(
                     title: "OCR Capture",
-                    icon: "viewfinder",
+                    icon: "text.viewfinder",
                     shortcut: "⌘⇧2",
-                    action: onCaptureScreen
+                    color: .blue,
+                    action: onOCRCapture
+                )
+
+                ActionButton(
+                    title: "Screenshot",
+                    icon: "camera.viewfinder",
+                    shortcut: "⌘⇧3",
+                    color: .green,
+                    action: onScreenshotCapture
                 )
 
                 ActionButton(
                     title: "Clipboard History",
                     icon: "square.stack",
                     shortcut: "⌘⇧V",
+                    color: .secondary,
                     action: {
                         ClipboardHistoryManager.shared.showDock()
                     }
@@ -73,6 +88,7 @@ struct ActionButton: View {
     let title: String
     let icon: String
     let shortcut: String
+    var color: Color = .secondary
     let action: () -> Void
 
     @State private var isHovered = false
@@ -83,7 +99,7 @@ struct ActionButton: View {
                 Image(systemName: icon)
                     .font(.system(size: 13))
                     .frame(width: 18)
-                    .foregroundStyle(isHovered ? .primary : .secondary)
+                    .foregroundStyle(isHovered ? color : .secondary)
 
                 Text(title)
                     .font(.system(size: 13))
@@ -96,7 +112,7 @@ struct ActionButton: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(isHovered ? Color.accentColor.opacity(0.1) : Color.clear)
+            .background(isHovered ? color.opacity(0.1) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)

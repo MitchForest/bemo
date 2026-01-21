@@ -9,11 +9,15 @@ enum ToastType: Sendable {
     case ocr
     case filePath
     case fileContents
+    case screenshot
+    case recording
 
     var icon: String {
         switch self {
-        case .success, .ocr, .filePath, .fileContents: return "checkmark.circle.fill"
-        case .error: return "xmark.circle.fill"
+        case .success, .ocr, .filePath, .fileContents, .screenshot, .recording:
+            return "checkmark.circle.fill"
+        case .error:
+            return "xmark.circle.fill"
         }
     }
 
@@ -24,6 +28,8 @@ enum ToastType: Sendable {
         case .ocr: return .blue
         case .filePath: return .orange
         case .fileContents: return .purple
+        case .screenshot: return .green
+        case .recording: return .red
         }
     }
 
@@ -34,6 +40,8 @@ enum ToastType: Sendable {
         case .ocr: return "OCR Text"
         case .filePath: return "File Path"
         case .fileContents: return "File Contents"
+        case .screenshot: return "Screenshot"
+        case .recording: return "Recording"
         }
     }
 }
@@ -105,8 +113,20 @@ final class ToastController {
         case .ocr: .ocr
         case .filePath: .filePath
         case .fileContents: .fileContents
+        case .screenshot: .screenshot
+        case .recording: .recording
         }
-        show(message: "Copied!", preview: item.content, type: type)
+        show(message: "Copied!", preview: item.preview, type: type)
+    }
+
+    /// Convenience for screenshot saved
+    func showScreenshotSaved(filename: String) {
+        show(message: "Saved!", preview: filename, type: .screenshot)
+    }
+
+    /// Convenience for recording saved
+    func showRecordingSaved(filename: String, duration: String) {
+        show(message: "Saved!", preview: "\(filename) (\(duration))", type: .recording)
     }
 
     private func dismiss() {

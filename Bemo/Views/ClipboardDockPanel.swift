@@ -319,6 +319,11 @@ struct ClipboardItemView: View {
     // MARK: - Content Preview Text
 
     private var contentPreview: String {
+        // For media items, show filename
+        if item.type == .screenshot || item.type == .recording {
+            return item.fileURL?.lastPathComponent ?? item.content
+        }
+
         let trimmed = item.content.trimmingCharacters(in: .whitespacesAndNewlines)
         let singleLine = trimmed.replacingOccurrences(of: "\n", with: " ")
         if singleLine.count > 50 {
@@ -327,14 +332,26 @@ struct ClipboardItemView: View {
         return singleLine
     }
 
+    /// Whether this item is a media item (screenshot/recording)
+    private var isMediaItem: Bool {
+        item.type == .screenshot || item.type == .recording
+    }
+
     // MARK: - Main Row
 
     private var mainRow: some View {
         HStack(spacing: 10) {
             // Clickable area (everything except copy button)
             HStack(spacing: 10) {
-                // Type badge
-                typeBadge
+                // Type badge or thumbnail
+                if isMediaItem, let thumbnailData = item.thumbnailData,
+                   let nsImage = NSImage(data: thumbnailData) {
+                    // Show thumbnail for media items
+                    mediaThumbnail(nsImage: nsImage)
+                } else {
+                    // Show type badge for text items
+                    typeBadge
+                }
 
                 // Content preview
                 VStack(alignment: .leading, spacing: 3) {
@@ -348,8 +365,13 @@ struct ClipboardItemView: View {
                         Text("•")
                         Text(item.relativeTime)
 
+                        // Show duration for recordings
+                        if let duration = item.formattedDuration {
+                            Text("•")
+                            Text(duration)
+                        }
                         // Show filename for file items
-                        if let fileName = item.fileName {
+                        else if let fileName = item.fileName, !isMediaItem {
                             Text("•")
                             Text(fileName)
                                 .lineLimit(1)
@@ -381,6 +403,32 @@ struct ClipboardItemView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Media Thumbnail
+
+    @ViewBuilder
+    private func mediaThumbnail(nsImage: NSImage) -> some View {
+        ZStack {
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            // Play icon overlay for recordings
+            if item.type == .recording {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white)
+                    .padding(6)
+                    .background(Circle().fill(.black.opacity(0.5)))
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(typeColor.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Type Badge
@@ -422,6 +470,17 @@ struct ClipboardItemView: View {
         case .ocr:
             // Create temp file and open in text editor
             openAsTemporaryFile()
+
+        case .screenshot, .recording:
+            // Open the media file if it exists
+            if let fileURL = item.fileURL {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    NSWorkspace.shared.open(fileURL)
+                } else {
+                    // File was deleted - show in Finder or error
+                    ToastController.shared.show(message: "Error", preview: "File not found", type: .error)
+                }
+            }
         }
     }
 
@@ -436,6 +495,9 @@ struct ClipboardItemView: View {
             fileName = item.sourceInfo ?? "bemo-content-\(item.id.uuidString.prefix(8)).txt"
         case .filePath:
             fileName = "bemo-path-\(item.id.uuidString.prefix(8)).txt"
+        case .screenshot, .recording:
+            // Media items should use openItem() instead
+            return
         }
 
         let fileURL = tempDir.appendingPathComponent(fileName)
@@ -456,17 +518,12 @@ struct ClipboardItemView: View {
                 .opacity(0.5)
                 .padding(.horizontal, BemoTheme.cardPadding)
 
-            // Full content in scrollable area
-            ScrollView {
-                Text(item.content)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+            // Content area - different for media vs text
+            if isMediaItem {
+                mediaExpandedContent
+            } else {
+                textExpandedContent
             }
-            .frame(maxHeight: 150)
-            .padding(.horizontal, BemoTheme.cardPadding)
-            .background(Color.secondary.opacity(0.03))
 
             // Action bar
             HStack(spacing: 6) {
@@ -483,6 +540,16 @@ struct ClipboardItemView: View {
                     Image(systemName: "arrow.up.forward.app")
                 }
                 .buttonStyle(CircleIconButtonStyle(size: 28, tint: .secondary))
+
+                // Show in Finder button for media items
+                if isMediaItem, let fileURL = item.fileURL {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .buttonStyle(CircleIconButtonStyle(size: 28, tint: .secondary))
+                }
 
                 Button {
                     manager.delete(item)
@@ -505,5 +572,71 @@ struct ClipboardItemView: View {
             .padding(.horizontal, BemoTheme.cardPadding)
             .padding(.bottom, BemoTheme.cardPadding)
         }
+    }
+
+    // MARK: - Text Expanded Content
+
+    private var textExpandedContent: some View {
+        ScrollView {
+            Text(item.content)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(maxHeight: 150)
+        .padding(.horizontal, BemoTheme.cardPadding)
+        .background(Color.secondary.opacity(0.03))
+    }
+
+    // MARK: - Media Expanded Content
+
+    private var mediaExpandedContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Large preview image
+            if let thumbnailData = item.thumbnailData,
+               let nsImage = NSImage(data: thumbnailData) {
+                ZStack {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    // Play icon for recordings
+                    if item.type == .recording {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .shadow(radius: 4)
+                    }
+                }
+                .padding(.horizontal, BemoTheme.cardPadding)
+            }
+
+            // File info
+            VStack(alignment: .leading, spacing: 4) {
+                if let fileURL = item.fileURL {
+                    Text(fileURL.lastPathComponent)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
+
+                    Text(fileURL.deletingLastPathComponent().path)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                if let duration = item.formattedDuration {
+                    Text("Duration: \(duration)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, BemoTheme.cardPadding)
+        }
+        .padding(.vertical, 4)
     }
 }

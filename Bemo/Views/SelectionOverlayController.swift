@@ -2,6 +2,20 @@ import AppKit
 import SwiftUI
 import ScreenCaptureKit
 
+// MARK: - Capture Result
+
+/// Result types for different capture modes
+enum CaptureResult: Sendable {
+    /// OCR text recognition result
+    case ocrText(String)
+
+    /// Screenshot capture result with cropped image and selection rect
+    case screenshot(CGImage, CGRect)
+
+    /// Recording region selection (for both quick and studio modes)
+    case recordingRegion(CGRect, CGDirectDisplayID)
+}
+
 // MARK: - Mouse State (Shared between controller and view)
 
 @MainActor
@@ -33,9 +47,10 @@ final class MouseDragState {
 @MainActor
 final class SelectionOverlayController {
     private var overlayPanels: [NSPanel] = []
-    private var completion: ((Result<String, Error>) -> Void)?
+    private var completion: ((Result<CaptureResult, Error>) -> Void)?
     private var screenshots: [CGDirectDisplayID: CGImage] = [:]
     private var mouseState = MouseDragState()
+    private var captureMode: CaptureMode = .ocr
 
     nonisolated(unsafe) private var keyEventMonitor: Any?
     nonisolated(unsafe) private var mouseDownMonitor: Any?
@@ -61,7 +76,15 @@ final class SelectionOverlayController {
 
     // MARK: - Public API
 
-    func start(completion: @escaping @MainActor (Result<String, Error>) -> Void) {
+    /// Start the selection overlay with the specified capture mode
+    /// - Parameters:
+    ///   - mode: The capture mode (ocr, screenshot, quickRecording, studioRecording)
+    ///   - completion: Callback with the capture result
+    func start(
+        mode: CaptureMode = .ocr,
+        completion: @escaping @MainActor (Result<CaptureResult, Error>) -> Void
+    ) {
+        self.captureMode = mode
         self.completion = completion
 
         // First, capture screenshots using ScreenCaptureKit (async)
@@ -135,11 +158,12 @@ final class SelectionOverlayController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.acceptsMouseMovedEvents = true
 
-        // Create the SwiftUI overlay view with shared mouse state
+        // Create the SwiftUI overlay view with shared mouse state and capture mode
         let overlayView = SelectionOverlayView(
             screenshot: screenshot,
             screenFrame: screen.frame,
             mouseState: mouseState,
+            captureMode: captureMode,
             onComplete: { [weak self] rect in
                 self?.handleSelection(rect: rect, screen: screen)
             },
@@ -257,8 +281,26 @@ final class SelectionOverlayController {
 
     private func handleSelection(rect: CGRect, screen: NSScreen) {
         // Get display ID for this screen
-        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
-              let screenshot = screenshots[displayID] else {
+        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+            complete(with: .failure(OCRError.noTextFound))
+            return
+        }
+
+        // Route based on capture mode
+        switch captureMode {
+        case .ocr:
+            handleOCRSelection(rect: rect, screen: screen, displayID: displayID)
+        case .screenshot:
+            handleScreenshotSelection(rect: rect, screen: screen, displayID: displayID)
+        case .quickRecording, .studioRecording:
+            handleRecordingSelection(rect: rect, displayID: displayID)
+        }
+    }
+
+    // MARK: - OCR Selection
+
+    private func handleOCRSelection(rect: CGRect, screen: NSScreen, displayID: CGDirectDisplayID) {
+        guard let screenshot = screenshots[displayID] else {
             complete(with: .failure(OCRError.noTextFound))
             return
         }
@@ -280,11 +322,46 @@ final class SelectionOverlayController {
         Task { @MainActor in
             do {
                 let text = try await OCRService.shared.recognize(image: croppedImage)
-                self.complete(with: .success(text))
+                self.complete(with: .success(.ocrText(text)))
             } catch {
                 self.complete(with: .failure(error))
             }
         }
+    }
+
+    // MARK: - Screenshot Selection
+
+    private func handleScreenshotSelection(rect: CGRect, screen: NSScreen, displayID: CGDirectDisplayID) {
+        guard let screenshot = screenshots[displayID] else {
+            complete(with: .failure(ScreenshotError.conversionFailed))
+            return
+        }
+
+        // Close all panels
+        closeAllPanels()
+
+        // Crop the screenshot to the selection
+        guard let croppedImage = ImageCropper.crop(
+            screenshot: screenshot,
+            selectionRect: rect,
+            screenFrame: screen.frame
+        ) else {
+            complete(with: .failure(ScreenshotError.conversionFailed))
+            return
+        }
+
+        // Return the cropped image
+        complete(with: .success(.screenshot(croppedImage, rect)))
+    }
+
+    // MARK: - Recording Selection
+
+    private func handleRecordingSelection(rect: CGRect, displayID: CGDirectDisplayID) {
+        // Close all panels
+        closeAllPanels()
+
+        // Return the recording region info
+        complete(with: .success(.recordingRegion(rect, displayID)))
     }
 
     private func cancel() {
@@ -301,7 +378,7 @@ final class SelectionOverlayController {
         screenshots.removeAll()
     }
 
-    private func complete(with result: Result<String, Error>) {
+    private func complete(with result: Result<CaptureResult, Error>) {
         completion?(result)
     }
 
@@ -338,6 +415,7 @@ struct SelectionOverlayView: View {
     let screenshot: CGImage
     let screenFrame: CGRect
     var mouseState: MouseDragState
+    let captureMode: CaptureMode
     let onComplete: @MainActor (CGRect) -> Void
     let onCancel: @MainActor () -> Void
 
@@ -403,11 +481,11 @@ struct SelectionOverlayView: View {
         }
         .allowsHitTesting(false)
 
-        // Selection border with glow effect
+        // Selection border with glow effect - use mode accent color
         RoundedRectangle(cornerRadius: 4)
             .strokeBorder(
                 LinearGradient(
-                    colors: [.white.opacity(0.9), .white.opacity(0.6)],
+                    colors: [captureMode.accentColor.opacity(0.9), captureMode.accentColor.opacity(0.6)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
@@ -415,14 +493,14 @@ struct SelectionOverlayView: View {
             )
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: rect.midY)
-            .shadow(color: .white.opacity(0.3), radius: 8)
+            .shadow(color: captureMode.accentColor.opacity(0.3), radius: 8)
             .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
             .allowsHitTesting(false)
 
-        // Corner handles for visual feedback
+        // Corner handles for visual feedback - use mode accent color
         ForEach(cornerPositions(for: rect), id: \.x) { position in
             Circle()
-                .fill(.white)
+                .fill(captureMode.accentColor)
                 .frame(width: 8, height: 8)
                 .shadow(color: .black.opacity(0.3), radius: 2)
                 .position(position)
@@ -440,21 +518,22 @@ struct SelectionOverlayView: View {
 
     private var instructionsLayer: some View {
         VStack(spacing: 12) {
-            // Icon with glow
+            // Icon with glow - use mode icon
             ZStack {
                 // Glow effect
-                Image(systemName: "viewfinder")
+                Image(systemName: captureMode.icon)
                     .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(captureMode.accentColor.opacity(0.3))
                     .blur(radius: 8)
 
-                Image(systemName: "viewfinder")
+                Image(systemName: captureMode.icon)
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(.white.opacity(0.95))
             }
 
             VStack(spacing: 6) {
-                Text("Drag to select text")
+                // Use mode instructions
+                Text(captureMode.instructions)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
 
@@ -476,7 +555,7 @@ struct SelectionOverlayView: View {
             RoundedRectangle(cornerRadius: BemoTheme.panelRadius)
                 .strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.5), .white.opacity(0.15)],
+                        colors: [captureMode.accentColor.opacity(0.5), captureMode.accentColor.opacity(0.15)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
@@ -484,6 +563,6 @@ struct SelectionOverlayView: View {
                 )
         }
         .shadow(color: .black.opacity(0.25), radius: 30, y: 15)
-        .shadow(color: .white.opacity(0.1), radius: 1, y: -1)
+        .shadow(color: captureMode.accentColor.opacity(0.1), radius: 1, y: -1)
     }
 }

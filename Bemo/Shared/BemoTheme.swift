@@ -15,6 +15,8 @@ enum BemoTheme {
         case .ocr: return .blue
         case .filePath: return .orange
         case .fileContents: return .purple
+        case .screenshot: return .green
+        case .recording: return .red
         }
     }
 
