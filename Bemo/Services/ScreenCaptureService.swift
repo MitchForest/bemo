@@ -1,5 +1,6 @@
 import ScreenCaptureKit
 import AppKit
+import CoreGraphics
 
 // MARK: - Screen Capture Service
 
@@ -10,87 +11,13 @@ actor ScreenCaptureService {
 
     private init() {}
 
-    // MARK: - Permission Checking
-
-    /// Check if we have screen recording permission
-    func hasPermission() async -> Bool {
-        do {
-            // Attempting to get shareable content will fail if no permission
-            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    /// Request screen recording permission by triggering the system prompt
-    func requestPermission() async -> Bool {
-        // The only way to request permission is to try to use the API
-        // This will trigger the system permission dialog
-        do {
-            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    // MARK: - Screen Capture
-
-    /// Capture a screenshot of a specific display
-    /// - Parameters:
-    ///   - display: The display to capture (nil = main display)
-    ///   - excludingAppBundleID: Bundle ID to exclude from capture (e.g., our own app)
-    /// - Returns: The captured CGImage
-    func captureDisplay(
-        _ display: SCDisplay? = nil,
-        excludingAppBundleID: String? = nil
-    ) async throws -> CGImage {
-        // Get available content
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-
-        // Find the target display
-        guard let targetDisplay = display ?? content.displays.first else {
-            throw ScreenCaptureError.noDisplayFound
-        }
-
-        // Build list of apps to exclude (our own app)
-        var excludedApps: [SCRunningApplication] = []
-        if let bundleID = excludingAppBundleID {
-            excludedApps = content.applications.filter { $0.bundleIdentifier == bundleID }
-        }
-
-        // Create content filter for the display, excluding our app
-        let filter = SCContentFilter(
-            display: targetDisplay,
-            excludingApplications: excludedApps,
-            exceptingWindows: []
-        )
-
-        // Configure capture settings
-        let config = SCStreamConfiguration()
-        config.width = targetDisplay.width * 2  // Retina
-        config.height = targetDisplay.height * 2
-        config.showsCursor = false
-        config.captureResolution = .best
-        config.colorSpaceName = CGColorSpace.sRGB
-
-        // Capture the screenshot
-        let image = try await SCScreenshotManager.captureImage(
-            contentFilter: filter,
-            configuration: config
-        )
-
-        return image
-    }
-
     /// Capture all displays
     /// - Parameter excludingAppBundleID: Bundle ID to exclude from capture
     /// - Returns: Dictionary mapping display ID to captured CGImage
     func captureAllDisplays(
         excludingAppBundleID: String? = nil
     ) async throws -> [CGDirectDisplayID: CGImage] {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let content = try await fetchShareableContent()
 
         var results: [CGDirectDisplayID: CGImage] = [:]
 
@@ -111,8 +38,8 @@ actor ScreenCaptureService {
 
             // Configure capture
             let config = SCStreamConfiguration()
-            config.width = scDisplay.width * 2
-            config.height = scDisplay.height * 2
+            config.width = scDisplay.width
+            config.height = scDisplay.height
             config.showsCursor = false
             config.captureResolution = .best
 
@@ -124,6 +51,9 @@ actor ScreenCaptureService {
                 )
                 results[scDisplay.displayID] = image
             } catch {
+                if isScreenRecordingDenied() {
+                    throw ScreenCaptureError.permissionDenied
+                }
                 // Continue with other displays if one fails
                 print("Failed to capture display \(scDisplay.displayID): \(error)")
             }
@@ -134,6 +64,22 @@ actor ScreenCaptureService {
         }
 
         return results
+    }
+
+    /// Load shareable content for displays and windows
+    nonisolated func fetchShareableContent() async throws -> SCShareableContent {
+        do {
+            return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        } catch {
+            if isScreenRecordingDenied() {
+                throw ScreenCaptureError.permissionDenied
+            }
+            throw error
+        }
+    }
+
+    nonisolated private func isScreenRecordingDenied() -> Bool {
+        CGPreflightScreenCaptureAccess() == false
     }
 }
 
@@ -149,7 +95,8 @@ enum ScreenCaptureError: Error, LocalizedError {
         case .noDisplayFound:
             return "No display found to capture"
         case .permissionDenied:
-            return "Screen Recording permission required. Please enable in System Settings > Privacy & Security > Screen Recording"
+            return "Screen Recording permission required. " +
+                "Please enable in System Settings > Privacy & Security > Screen Recording"
         case .capturesFailed:
             return "Failed to capture any displays"
         }

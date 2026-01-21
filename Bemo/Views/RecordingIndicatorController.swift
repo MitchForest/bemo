@@ -8,9 +8,15 @@ import SwiftUI
 final class RecordingIndicatorController {
     private var panel: NSPanel?
     private var onStop: (() -> Void)?
-    private var isMicEnabled: Bool = false
+    nonisolated(unsafe) private var keyEventMonitor: Any?
 
     init() {}
+
+    deinit {
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
 
     // MARK: - Public API
 
@@ -20,15 +26,14 @@ final class RecordingIndicatorController {
     ///   - onStop: Callback when user clicks stop
     func show(isMicEnabled: Bool, onStop: @escaping () -> Void) {
         self.onStop = onStop
-        self.isMicEnabled = isMicEnabled
 
         // Get visible frame (excludes Dock and menu bar)
         guard let screen = NSScreen.main else { return }
         let visibleFrame = screen.visibleFrame
 
-        // Indicator dimensions
-        let indicatorWidth: CGFloat = isMicEnabled ? 220 : 160
-        let indicatorHeight: CGFloat = 44
+        // Indicator dimensions (consistent with pre-recording dock)
+        let indicatorWidth: CGFloat = isMicEnabled ? 200 : 140
+        let indicatorHeight: CGFloat = 48
 
         // Position: centered horizontally, above the Dock
         let indicatorX = visibleFrame.midX - indicatorWidth / 2
@@ -66,10 +71,13 @@ final class RecordingIndicatorController {
             },
             onMicToggle: {
                 Task {
-                    try? await ScreenRecordingService.shared.toggleMicrophone()
+                    try? await CompositorService.shared.toggleMicrophone()
                 }
             }
         )
+
+        // Setup ESC key monitor to stop recording
+        setupKeyMonitor()
 
         let hostingView = NSHostingView(rootView: indicatorView)
         hostingView.frame = CGRect(origin: .zero, size: indicatorFrame.size)
@@ -95,6 +103,12 @@ final class RecordingIndicatorController {
     /// Hide recording indicator
     func hide() {
         guard let currentPanel = panel else { return }
+
+        // Remove key monitor
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyEventMonitor = nil
+        }
 
         panel = nil
         onStop = nil
@@ -124,8 +138,17 @@ final class RecordingIndicatorController {
         callback?()
     }
 
-    /// Whether indicator is currently visible
-    var isVisible: Bool {
-        panel != nil
+    // MARK: - Key Monitor
+
+    private func setupKeyMonitor() {
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 {  // ESC key
+                Task { @MainActor in
+                    self?.handleStop()
+                }
+                return nil  // Consume the event
+            }
+            return event
+        }
     }
 }

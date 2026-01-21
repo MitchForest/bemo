@@ -1,0 +1,15 @@
+file_length:
+  warning: 700
+  error: 900
+
+type_body_length:
+  warning: 350
+  error: 450
+
+function_body_length:
+  warning: 80
+  error: 120
+
+function_parameter_count:
+  warning: 7
+  error: 9

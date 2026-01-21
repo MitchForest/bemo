@@ -143,7 +143,7 @@ final class ScreenshotService {
     ///   - maxSize: Maximum dimension (width or height)
     /// - Returns: JPEG data for the thumbnail
     func generateVideoThumbnail(from url: URL, maxSize: CGFloat = 120) async -> Data? {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
         imageGenerator.appliesPreferredTrackTransform = true
         imageGenerator.maximumSize = CGSize(width: maxSize * 2, height: maxSize * 2)
@@ -151,12 +151,12 @@ final class ScreenshotService {
         do {
             // Get image at 0.5 seconds (or start if video is shorter)
             let time = CMTime(seconds: 0.5, preferredTimescale: 600)
-            let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+            let (cgImage, _) = try await imageGenerator.image(at: time)
             return generateThumbnail(from: cgImage, maxSize: maxSize)
         } catch {
             // Try at the very start
             do {
-                let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+                let (cgImage, _) = try await imageGenerator.image(at: .zero)
                 return generateThumbnail(from: cgImage, maxSize: maxSize)
             } catch {
                 print("Failed to generate video thumbnail: \(error)")
@@ -169,7 +169,7 @@ final class ScreenshotService {
     /// - Parameter url: URL to the video file
     /// - Returns: Duration in seconds
     func getVideoDuration(from url: URL) async -> TimeInterval? {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         do {
             let duration = try await asset.load(.duration)
             return duration.seconds

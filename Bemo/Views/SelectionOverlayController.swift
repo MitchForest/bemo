@@ -16,46 +16,32 @@ enum CaptureResult: Sendable {
     case recordingRegion(CGRect, CGDirectDisplayID)
 }
 
-// MARK: - Mouse State (Shared between controller and view)
-
-@MainActor
-@Observable
-final class MouseDragState {
-    var dragStart: CGPoint?
-    var dragCurrent: CGPoint?
-    var isDragging = false
-
-    var selectionRect: CGRect? {
-        guard let start = dragStart, let current = dragCurrent else { return nil }
-        return CGRect(
-            x: min(start.x, current.x),
-            y: min(start.y, current.y),
-            width: abs(current.x - start.x),
-            height: abs(current.y - start.y)
-        )
-    }
-
-    func reset() {
-        dragStart = nil
-        dragCurrent = nil
-        isDragging = false
-    }
-}
-
 // MARK: - Selection Overlay Controller
 
 @MainActor
 final class SelectionOverlayController {
-    private var overlayPanels: [NSPanel] = []
+    private struct OverlayPanel {
+        let panel: NSPanel
+        let screen: NSScreen
+    }
+
+    private struct WindowCandidate {
+        let frame: CGRect
+        let displayID: CGDirectDisplayID
+    }
+
+    private var overlayPanels: [OverlayPanel] = []
     private var completion: ((Result<CaptureResult, Error>) -> Void)?
     private var screenshots: [CGDirectDisplayID: CGImage] = [:]
     private var mouseState = MouseDragState()
     private var captureMode: CaptureMode = .ocr
+    private var windowCandidates: [WindowCandidate] = []
 
     nonisolated(unsafe) private var keyEventMonitor: Any?
     nonisolated(unsafe) private var mouseDownMonitor: Any?
     nonisolated(unsafe) private var mouseDragMonitor: Any?
     nonisolated(unsafe) private var mouseUpMonitor: Any?
+    nonisolated(unsafe) private var mouseMoveMonitor: Any?
 
     init() {}
 
@@ -72,7 +58,14 @@ final class SelectionOverlayController {
         if let monitor = mouseUpMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        if let monitor = mouseMoveMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
+
+}
+
+extension SelectionOverlayController {
 
     // MARK: - Public API
 
@@ -100,6 +93,12 @@ final class SelectionOverlayController {
 
                 self.screenshots = captures
 
+                if mode == .recordingWindow {
+                    self.windowCandidates = try await self.loadWindowCandidates(
+                        excludingAppBundleID: bundleID
+                    )
+                }
+
                 // Now show the overlay panels
                 self.showOverlayPanels()
 
@@ -113,6 +112,15 @@ final class SelectionOverlayController {
         }
     }
 
+    func dismiss() {
+        closeAllPanels()
+        completion = nil
+    }
+
+}
+
+extension SelectionOverlayController {
+
     // MARK: - Overlay Display
 
     private func showOverlayPanels() {
@@ -120,26 +128,33 @@ final class SelectionOverlayController {
         setupEventMonitor()
 
         // Create overlay panels for each screen
+        let screenNumberKey = NSDeviceDescriptionKey("NSScreenNumber")
         for screen in NSScreen.screens {
             // Get display ID for this screen
-            guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
-                  let screenshot = screenshots[displayID] else {
+            guard let displayID = screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID else {
+                continue
+            }
+            guard let screenshot = screenshots[displayID] else {
                 continue
             }
 
-            let panel = createOverlayPanel(for: screen, screenshot: screenshot)
-            overlayPanels.append(panel)
+            let panel = createOverlayPanel(for: screen, displayID: displayID, screenshot: screenshot)
+            overlayPanels.append(OverlayPanel(panel: panel, screen: screen))
         }
 
         // Show all panels at once using orderFrontRegardless (non-activating)
-        for panel in overlayPanels {
-            panel.orderFrontRegardless()
+        for entry in overlayPanels {
+            entry.panel.orderFrontRegardless()
         }
     }
 
     // MARK: - Panel Creation
 
-    private func createOverlayPanel(for screen: NSScreen, screenshot: CGImage) -> NSPanel {
+    private func createOverlayPanel(
+        for screen: NSScreen,
+        displayID: CGDirectDisplayID,
+        screenshot: CGImage
+    ) -> NSPanel {
         // Create a non-activating panel
         let panel = SelectionPanel(
             contentRect: screen.frame,
@@ -161,21 +176,68 @@ final class SelectionOverlayController {
         // Create the SwiftUI overlay view with shared mouse state and capture mode
         let overlayView = SelectionOverlayView(
             screenshot: screenshot,
-            screenFrame: screen.frame,
+            screenScale: screen.backingScaleFactor,
             mouseState: mouseState,
             captureMode: captureMode,
-            onComplete: { [weak self] rect in
-                self?.handleSelection(rect: rect, screen: screen)
-            },
-            onCancel: { [weak self] in
-                self?.cancel()
-            }
+            displayID: displayID
         )
 
         panel.contentView = NSHostingView(rootView: overlayView)
 
         return panel
     }
+
+    // MARK: - Window Candidates (Window Recording)
+
+    private func loadWindowCandidates(
+        excludingAppBundleID: String?
+    ) async throws -> [WindowCandidate] {
+        let content = try await ScreenCaptureService.shared.fetchShareableContent()
+        let primaryScreenHeight = NSScreen.screens.first?.frame.height ?? 0
+
+        return content.windows.compactMap { window in
+            guard window.isOnScreen, window.windowLayer == 0 else { return nil }
+
+            if let bundleID = excludingAppBundleID,
+               window.owningApplication?.bundleIdentifier == bundleID {
+                return nil
+            }
+
+            let appKitFrame = convertWindowFrameToAppKit(
+                window.frame,
+                primaryScreenHeight: primaryScreenHeight
+            )
+
+            guard appKitFrame.width > 40, appKitFrame.height > 40 else { return nil }
+            guard let displayID = displayID(for: appKitFrame) else { return nil }
+
+            return WindowCandidate(frame: appKitFrame, displayID: displayID)
+        }
+    }
+
+    private func convertWindowFrameToAppKit(
+        _ frame: CGRect,
+        primaryScreenHeight: CGFloat
+    ) -> CGRect {
+        CGRect(
+            x: frame.minX,
+            y: primaryScreenHeight - frame.maxY,
+            width: frame.width,
+            height: frame.height
+        )
+    }
+
+    private func displayID(for frame: CGRect) -> CGDirectDisplayID? {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) else {
+            return nil
+        }
+        return screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+    }
+
+}
+
+extension SelectionOverlayController {
 
     // MARK: - Event Handling
 
@@ -195,6 +257,10 @@ final class SelectionOverlayController {
         mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let self = self else { return event }
 
+            if self.captureMode == .recordingWindow {
+                return event
+            }
+
             Task { @MainActor in
                 let location = event.locationInWindow
                 self.mouseState.isDragging = true
@@ -208,6 +274,10 @@ final class SelectionOverlayController {
         mouseDragMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
             guard let self = self else { return event }
 
+            if self.captureMode == .recordingWindow {
+                return event
+            }
+
             Task { @MainActor in
                 self.mouseState.dragCurrent = event.locationInWindow
             }
@@ -219,13 +289,27 @@ final class SelectionOverlayController {
             guard let self = self else { return event }
 
             Task { @MainActor in
-                self.handleMouseUp(at: event.locationInWindow, in: event.window)
+                if self.captureMode == .recordingWindow {
+                    self.handleWindowClick(at: event.locationInWindow, in: event.window)
+                } else {
+                    self.handleMouseUp(at: event.locationInWindow, in: event.window)
+                }
             }
             return event
         }
+
+        if captureMode == .recordingWindow {
+            mouseMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+                guard let self = self else { return event }
+                Task { @MainActor in
+                    self.updateHoveredWindow(at: event.locationInWindow, in: event.window)
+                }
+                return event
+            }
+        }
     }
 
-    private func handleMouseUp(at location: CGPoint, in window: NSWindow?) {
+    private func handleMouseUp(at _: CGPoint, in window: NSWindow?) {
         guard let rect = mouseState.selectionRect else {
             // No selection - cancel
             cancel()
@@ -236,9 +320,8 @@ final class SelectionOverlayController {
         if rect.width > 10 && rect.height > 10 {
             // Find which screen/panel this belongs to
             if let panel = window as? SelectionPanel,
-               let index = overlayPanels.firstIndex(of: panel),
-               index < NSScreen.screens.count {
-                let screen = NSScreen.screens[index]
+               let entry = overlayPanels.first(where: { $0.panel === panel }) {
+                let screen = entry.screen
 
                 // Convert from flipped window coordinates to screen coordinates
                 let screenRect = CGRect(
@@ -258,6 +341,74 @@ final class SelectionOverlayController {
         }
     }
 
+    private func updateHoveredWindow(at location: CGPoint, in window: NSWindow?) {
+        guard captureMode == .recordingWindow else { return }
+        guard let panel = window as? SelectionPanel,
+              let entry = overlayPanels.first(where: { $0.panel === panel }) else {
+            mouseState.hoveredWindowRect = nil
+            mouseState.hoveredWindowDisplayID = nil
+            return
+        }
+
+        let screenPoint = CGPoint(
+            x: entry.screen.frame.minX + location.x,
+            y: entry.screen.frame.minY + location.y
+        )
+
+        let screenNumberKey = NSDeviceDescriptionKey("NSScreenNumber")
+        let displayID = entry.screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID
+
+        guard let displayID else {
+            mouseState.hoveredWindowRect = nil
+            mouseState.hoveredWindowDisplayID = nil
+            return
+        }
+
+        if let candidate = windowCandidates.first(where: {
+            $0.displayID == displayID && $0.frame.contains(screenPoint)
+        }) {
+            let localRect = CGRect(
+                x: candidate.frame.minX - entry.screen.frame.minX,
+                y: candidate.frame.minY - entry.screen.frame.minY,
+                width: candidate.frame.width,
+                height: candidate.frame.height
+            )
+            mouseState.hoveredWindowRect = localRect
+            mouseState.hoveredWindowDisplayID = displayID
+        } else {
+            mouseState.hoveredWindowRect = nil
+            mouseState.hoveredWindowDisplayID = nil
+        }
+    }
+
+    private func handleWindowClick(at location: CGPoint, in window: NSWindow?) {
+        guard let panel = window as? SelectionPanel,
+              let entry = overlayPanels.first(where: { $0.panel === panel }) else {
+            cancel()
+            return
+        }
+
+        let screenPoint = CGPoint(
+            x: entry.screen.frame.minX + location.x,
+            y: entry.screen.frame.minY + location.y
+        )
+
+        let screenNumberKey = NSDeviceDescriptionKey("NSScreenNumber")
+        guard let displayID = entry.screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID else {
+            cancel()
+            return
+        }
+
+        guard let candidate = windowCandidates.first(where: {
+            $0.displayID == displayID && $0.frame.contains(screenPoint)
+        }) else {
+            cancel()
+            return
+        }
+
+        handleRecordingSelection(rect: candidate.frame, displayID: displayID)
+    }
+
     private func removeEventMonitor() {
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
@@ -275,13 +426,22 @@ final class SelectionOverlayController {
             NSEvent.removeMonitor(monitor)
             mouseUpMonitor = nil
         }
+        if let monitor = mouseMoveMonitor {
+            NSEvent.removeMonitor(monitor)
+            mouseMoveMonitor = nil
+        }
     }
+
+}
+
+extension SelectionOverlayController {
 
     // MARK: - Selection Handling
 
     private func handleSelection(rect: CGRect, screen: NSScreen) {
         // Get display ID for this screen
-        guard let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
+        let screenNumberKey = NSDeviceDescriptionKey("NSScreenNumber")
+        guard let displayID = screen.deviceDescription[screenNumberKey] as? CGDirectDisplayID else {
             complete(with: .failure(OCRError.noTextFound))
             return
         }
@@ -292,7 +452,9 @@ final class SelectionOverlayController {
             handleOCRSelection(rect: rect, screen: screen, displayID: displayID)
         case .screenshot:
             handleScreenshotSelection(rect: rect, screen: screen, displayID: displayID)
-        case .quickRecording, .studioRecording:
+        case .recording:
+            handleRecordingSelection(rect: rect, displayID: displayID)
+        case .recordingWindow:
             handleRecordingSelection(rect: rect, displayID: displayID)
         }
     }
@@ -371,23 +533,35 @@ final class SelectionOverlayController {
     private func closeAllPanels() {
         removeEventMonitor()
 
-        for panel in overlayPanels {
-            panel.orderOut(nil)
+        for entry in overlayPanels {
+            entry.panel.orderOut(nil)
         }
         overlayPanels.removeAll()
         screenshots.removeAll()
+        windowCandidates.removeAll()
+        mouseState.isDragging = false
+        mouseState.dragStart = nil
+        mouseState.dragCurrent = nil
+        mouseState.hoveredWindowRect = nil
+        mouseState.hoveredWindowDisplayID = nil
     }
 
     private func complete(with result: Result<CaptureResult, Error>) {
         completion?(result)
     }
 
+}
+
+extension SelectionOverlayController {
+
     // MARK: - Permission Handling
 
     private func showPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Screen Recording Permission Required"
-        alert.informativeText = "Bemo needs Screen Recording permission to capture screen content.\n\nPlease enable it in System Settings > Privacy & Security > Screen Recording, then restart Bemo."
+        alert.informativeText =
+            "Bemo needs Screen Recording permission to capture screen content.\n\n" +
+            "Please enable it in System Settings > Privacy & Security > Screen Recording, then restart Bemo."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Cancel")
@@ -406,163 +580,4 @@ final class SelectionOverlayController {
 final class SelectionPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-}
-
-// MARK: - Selection Overlay View
-
-@MainActor
-struct SelectionOverlayView: View {
-    let screenshot: CGImage
-    let screenFrame: CGRect
-    var mouseState: MouseDragState
-    let captureMode: CaptureMode
-    let onComplete: @MainActor (CGRect) -> Void
-    let onCancel: @MainActor () -> Void
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Layer 1: Frozen screenshot as background
-                screenshotLayer(size: geometry.size)
-
-                // Layer 2: Very subtle dim overlay - mostly transparent
-                Color.black.opacity(0.15)
-
-                // Layer 3: Selection cutout (if dragging)
-                if let rect = flippedSelectionRect(in: geometry.size), rect.width > 5, rect.height > 5 {
-                    selectionLayer(rect: rect, size: geometry.size)
-                }
-
-                // Layer 4: Instructions (hide immediately when dragging starts)
-                if !mouseState.isDragging {
-                    instructionsLayer
-                }
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .onAppear {
-                NSCursor.crosshair.push()
-            }
-            .onDisappear {
-                NSCursor.pop()
-            }
-        }
-    }
-
-    // Convert from AppKit coordinates (origin bottom-left) to SwiftUI (origin top-left)
-    private func flippedSelectionRect(in size: CGSize) -> CGRect? {
-        guard let rect = mouseState.selectionRect else { return nil }
-        return CGRect(
-            x: rect.minX,
-            y: size.height - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
-    }
-
-    // MARK: - View Layers
-
-    @ViewBuilder
-    private func screenshotLayer(size: CGSize) -> some View {
-        Image(decorative: screenshot, scale: NSScreen.main?.backingScaleFactor ?? 2.0)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: size.width, height: size.height)
-    }
-
-    @ViewBuilder
-    private func selectionLayer(rect: CGRect, size: CGSize) -> some View {
-        // Darken area outside selection for contrast
-        Canvas { context, canvasSize in
-            // Fill entire area with darker overlay
-            context.fill(Path(CGRect(origin: .zero, size: canvasSize)), with: .color(.black.opacity(0.25)))
-            // Cut out the selection area
-            context.blendMode = .destinationOut
-            context.fill(Path(rect), with: .color(.white))
-        }
-        .allowsHitTesting(false)
-
-        // Selection border with glow effect - use mode accent color
-        RoundedRectangle(cornerRadius: 4)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [captureMode.accentColor.opacity(0.9), captureMode.accentColor.opacity(0.6)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 2
-            )
-            .frame(width: rect.width, height: rect.height)
-            .position(x: rect.midX, y: rect.midY)
-            .shadow(color: captureMode.accentColor.opacity(0.3), radius: 8)
-            .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
-            .allowsHitTesting(false)
-
-        // Corner handles for visual feedback - use mode accent color
-        ForEach(cornerPositions(for: rect), id: \.x) { position in
-            Circle()
-                .fill(captureMode.accentColor)
-                .frame(width: 8, height: 8)
-                .shadow(color: .black.opacity(0.3), radius: 2)
-                .position(position)
-        }
-    }
-
-    private func cornerPositions(for rect: CGRect) -> [CGPoint] {
-        [
-            CGPoint(x: rect.minX, y: rect.minY),
-            CGPoint(x: rect.maxX, y: rect.minY),
-            CGPoint(x: rect.minX, y: rect.maxY),
-            CGPoint(x: rect.maxX, y: rect.maxY)
-        ]
-    }
-
-    private var instructionsLayer: some View {
-        VStack(spacing: 12) {
-            // Icon with glow - use mode icon
-            ZStack {
-                // Glow effect
-                Image(systemName: captureMode.icon)
-                    .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(captureMode.accentColor.opacity(0.3))
-                    .blur(radius: 8)
-
-                Image(systemName: captureMode.icon)
-                    .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(.white.opacity(0.95))
-            }
-
-            VStack(spacing: 6) {
-                // Use mode instructions
-                Text(captureMode.instructions)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                HStack(spacing: 16) {
-                    Label("Click to cancel", systemImage: "cursorarrow.click")
-                    Label("ESC to cancel", systemImage: "escape")
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
-            }
-        }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 24)
-        .background {
-            RoundedRectangle(cornerRadius: BemoTheme.panelRadius)
-                .fill(.ultraThinMaterial.opacity(0.85))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: BemoTheme.panelRadius)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [captureMode.accentColor.opacity(0.5), captureMode.accentColor.opacity(0.15)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        }
-        .shadow(color: .black.opacity(0.25), radius: 30, y: 15)
-        .shadow(color: captureMode.accentColor.opacity(0.1), radius: 1, y: -1)
-    }
 }

@@ -19,14 +19,12 @@ final class RecordingControlsController {
     /// - Parameters:
     ///   - region: The selected recording region
     ///   - displayID: The display ID for the region
-    ///   - screenFrame: The screen frame to position relative to
     ///   - onStart: Callback when user clicks Start Recording
     ///   - onCancel: Callback when user cancels
     ///   - onCameraToggled: Callback when camera is toggled (for live preview)
     func show(
         for region: CGRect,
         displayID: CGDirectDisplayID,
-        screenFrame: CGRect,
         onStart: @escaping (RecordingOptions) -> Void,
         onCancel: @escaping () -> Void,
         onCameraToggled: @escaping (Bool) -> Void
@@ -148,8 +146,4 @@ final class RecordingControlsController {
         callback?()
     }
 
-    /// Whether panel is currently visible
-    var isVisible: Bool {
-        panel != nil
-    }
 }

@@ -1,5 +1,16 @@
 import SwiftUI
 
+// MARK: - Recording Indicator Design Constants
+
+private enum IndicatorMetrics {
+    static let buttonSize: CGFloat = 32
+    static let iconSize: CGFloat = 14
+    static let buttonRadius: CGFloat = 8
+    static let dockRadius: CGFloat = 12
+    static let dockPadding: CGFloat = 8
+    static let dividerHeight: CGFloat = 24
+}
+
 // MARK: - Recording Indicator View
 
 /// Horizontal toolbar showing recording status, timer, mic toggle, and stop button
@@ -17,19 +28,19 @@ struct RecordingIndicatorView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Stop button
+            // Stop button (same size as other buttons)
             Button(action: onStop) {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 24, height: 24)
+                    .frame(width: IndicatorMetrics.buttonSize, height: IndicatorMetrics.buttonSize)
                     .background(Circle().fill(.red))
             }
             .buttonStyle(.plain)
-            .help("Stop Recording")
+            .help("Stop Recording (ESC)")
 
             // Recording indicator + time
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 // Pulsing dot
                 Circle()
                     .fill(.red)
@@ -39,63 +50,51 @@ struct RecordingIndicatorView: View {
 
                 // Timer
                 Text(formattedTime)
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
                     .foregroundStyle(.primary)
+                    .frame(minWidth: 44, alignment: .leading)
             }
 
-            // Mic toggle with level meter (only show if mic was enabled at start)
+            // Mic toggle with integrated level (only show if mic was enabled at start)
             if isMicEnabled {
-                // Divider
                 Divider()
-                    .frame(height: 20)
+                    .frame(height: IndicatorMetrics.dividerHeight)
                     .opacity(0.3)
 
-                HStack(spacing: 4) {
-                    // Mic toggle button
-                    Button {
-                        isMuted.toggle()
-                        onMicToggle()
-                    } label: {
-                        Image(systemName: isMuted ? "mic.slash.fill" : "mic.fill")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(isMuted ? .red : .primary)
-                            .frame(width: 36, height: 36)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.primary.opacity(0.08))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(isMuted ? "Unmute Microphone" : "Mute Microphone")
-
-                    // Audio level meter - fixed width to prevent layout shifts
-                    ZStack {
-                        if audioMonitor.isMonitoring && !isMuted {
-                            CompactAudioLevelMeterView(
-                                level: audioMonitor.level,
-                                isMuted: isMuted
-                            )
-                            .transition(.opacity)
-                        }
-                    }
-                    .frame(width: 32)
+                // Mic toggle button with integrated level indicator
+                Button {
+                    isMuted.toggle()
+                    onMicToggle()
+                } label: {
+                    MicLevelIcon(
+                        level: audioMonitor.isMonitoring ? audioMonitor.level : 0,
+                        size: IndicatorMetrics.iconSize,
+                        isMuted: isMuted,
+                        isEnabled: true
+                    )
+                    .frame(width: IndicatorMetrics.buttonSize, height: IndicatorMetrics.buttonSize)
+                    .background(
+                        RoundedRectangle(cornerRadius: IndicatorMetrics.buttonRadius)
+                            .fill(Color.primary.opacity(0.08))
+                    )
                 }
+                .buttonStyle(.plain)
+                .help(isMuted ? "Unmute (M)" : "Mute (M)")
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, IndicatorMetrics.dockPadding)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: IndicatorMetrics.dockRadius)
                 .fill(.ultraThinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: IndicatorMetrics.dockRadius)
                 .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+        .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
         .onAppear {
-            isPulsing = true
-            // Animate pulsing
+            // Start pulsing animation
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 isPulsing = true
             }

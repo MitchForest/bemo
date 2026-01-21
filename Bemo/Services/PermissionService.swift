@@ -56,9 +56,4 @@ final class PermissionService {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    // MARK: - Helpers
-
-    var allGranted: Bool {
-        screenRecordingGranted && accessibilityGranted
-    }
 }

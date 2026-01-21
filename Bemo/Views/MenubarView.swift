@@ -4,15 +4,18 @@ struct MenubarView: View {
     let onOCRCapture: () -> Void
     let onScreenshotCapture: () -> Void
     let onRecordingCapture: () -> Void
+    let onWindowRecordingCapture: () -> Void
 
     init(
         onOCRCapture: @escaping () -> Void,
         onScreenshotCapture: @escaping () -> Void,
-        onRecordingCapture: @escaping () -> Void
+        onRecordingCapture: @escaping () -> Void,
+        onWindowRecordingCapture: @escaping () -> Void
     ) {
         self.onOCRCapture = onOCRCapture
         self.onScreenshotCapture = onScreenshotCapture
         self.onRecordingCapture = onRecordingCapture
+        self.onWindowRecordingCapture = onWindowRecordingCapture
     }
 
     var body: some View {
@@ -36,7 +39,7 @@ struct MenubarView: View {
                 ActionButton(
                     title: "OCR Capture",
                     icon: "text.viewfinder",
-                    shortcut: "⌘⇧1",
+                    shortcut: HotkeyAction.ocrCapture.shortcutLabel,
                     color: .blue,
                     action: onOCRCapture
                 )
@@ -44,7 +47,7 @@ struct MenubarView: View {
                 ActionButton(
                     title: "Screenshot",
                     icon: "camera.viewfinder",
-                    shortcut: "⌘⇧2",
+                    shortcut: HotkeyAction.screenshotCapture.shortcutLabel,
                     color: .green,
                     action: onScreenshotCapture
                 )
@@ -52,15 +55,23 @@ struct MenubarView: View {
                 ActionButton(
                     title: "Screen Recording",
                     icon: "record.circle",
-                    shortcut: "⌘⇧3",
+                    shortcut: HotkeyAction.recordingCapture.shortcutLabel,
                     color: .red,
                     action: onRecordingCapture
                 )
 
                 ActionButton(
+                    title: "Window Recording",
+                    icon: "macwindow",
+                    shortcut: HotkeyAction.recordingWindowCapture.shortcutLabel,
+                    color: .red,
+                    action: onWindowRecordingCapture
+                )
+
+                ActionButton(
                     title: "Clipboard History",
                     icon: "square.stack",
-                    shortcut: "⌘⇧V",
+                    shortcut: HotkeyAction.clipboardHistory.shortcutLabel,
                     color: .secondary,
                     action: {
                         ClipboardHistoryManager.shared.showDock()

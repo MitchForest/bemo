@@ -9,9 +9,6 @@ import AVFoundation
 final class CameraOverlayController {
     private var panel: NSPanel?
     private let cameraService = CameraService.shared
-    private var currentSize: CameraSize = .medium
-    private var currentPosition: CameraPosition = .bottomRight
-    private var screenFrame: CGRect = .zero
 
     init() {}
 
@@ -27,11 +24,6 @@ final class CameraOverlayController {
         size: CameraSize = .medium,
         in screenFrame: CGRect
     ) async throws {
-        // Store configuration
-        currentPosition = position
-        currentSize = size
-        self.screenFrame = screenFrame
-
         // Start camera capture
         let previewLayer = try await cameraService.startCapture()
 
@@ -105,47 +97,4 @@ final class CameraOverlayController {
         }
     }
 
-    /// Update camera position
-    /// - Parameter position: New corner position
-    func updatePosition(_ position: CameraPosition) {
-        guard let panel = panel else { return }
-
-        currentPosition = position
-        let newFrame = position.frame(in: screenFrame, size: currentSize.dimension, margin: 20)
-
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0.25
-        NSAnimationContext.current.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        panel.animator().setFrame(newFrame, display: true)
-        NSAnimationContext.endGrouping()
-    }
-
-    /// Update camera size
-    /// - Parameter size: New size
-    func updateSize(_ size: CameraSize) {
-        guard let currentPanel = panel else { return }
-
-        currentSize = size
-
-        // Recreate view with new size
-        let newFrame = currentPosition.frame(in: screenFrame, size: size.dimension, margin: 20)
-
-        if let previewLayer = cameraService.previewLayer {
-            let overlayView = CameraOverlayView(previewLayer: previewLayer, size: size.dimension)
-            let hostingView = NSHostingView(rootView: overlayView)
-            hostingView.frame = CGRect(origin: .zero, size: newFrame.size)
-            currentPanel.contentView = hostingView
-        }
-
-        NSAnimationContext.beginGrouping()
-        NSAnimationContext.current.duration = 0.25
-        NSAnimationContext.current.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        currentPanel.animator().setFrame(newFrame, display: true)
-        NSAnimationContext.endGrouping()
-    }
-
-    /// Whether camera overlay is currently visible
-    var isVisible: Bool {
-        panel != nil
-    }
 }

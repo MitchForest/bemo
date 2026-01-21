@@ -4,7 +4,6 @@ import SwiftUI
 
 /// Full-screen countdown overlay for delayed recording start
 struct CountdownOverlayView: View {
-    let seconds: Int
     let onComplete: () -> Void
     let onCancel: () -> Void
 
@@ -13,7 +12,6 @@ struct CountdownOverlayView: View {
     @State private var opacity: Double = 1.0
 
     init(seconds: Int, onComplete: @escaping () -> Void, onCancel: @escaping () -> Void) {
-        self.seconds = seconds
         self.onComplete = onComplete
         self.onCancel = onCancel
         self._currentCount = State(initialValue: seconds)

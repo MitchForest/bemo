@@ -124,11 +124,6 @@ final class ToastController {
         show(message: "Saved!", preview: filename, type: .screenshot)
     }
 
-    /// Convenience for recording saved
-    func showRecordingSaved(filename: String, duration: String) {
-        show(message: "Saved!", preview: "\(filename) (\(duration))", type: .recording)
-    }
-
     private func dismiss() {
         guard let window = toastWindow else { return }
 

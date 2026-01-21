@@ -4,13 +4,12 @@ struct SettingsView: View {
     @AppStorage("ocrRecognitionLevel") private var ocrRecognitionLevel = "accurate"
     @AppStorage("ocrLanguage") private var ocrLanguage = "en-US"
     @AppStorage("defaultCopyMode") private var defaultCopyMode = "path"
-    @AppStorage("showToast") private var showToast = true
 
     init() {}
 
     var body: some View {
         TabView {
-            GeneralSettingsView(showToast: $showToast)
+            GeneralSettingsView()
                 .tabItem {
                     Label("General", systemImage: "gear")
                 }
@@ -35,28 +34,19 @@ struct SettingsView: View {
 }
 
 struct GeneralSettingsView: View {
-    @Binding var showToast: Bool
-
     var body: some View {
         Form {
-            Toggle("Show confirmation toast", isOn: $showToast)
-
             Section {
                 Text("Keyboard Shortcuts")
                     .font(.headline)
 
-                HStack {
-                    Text("Capture Screen")
-                    Spacer()
-                    Text("⌘⇧2")
-                        .foregroundColor(.secondary)
-                }
-
-                HStack {
-                    Text("Copy File")
-                    Spacer()
-                    Text("⌘⇧C")
-                        .foregroundColor(.secondary)
+                ForEach(HotkeyAction.allCases, id: \.self) { action in
+                    HStack {
+                        Text(action.title)
+                        Spacer()
+                        Text(action.shortcutLabel)
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }

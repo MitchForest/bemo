@@ -4,14 +4,8 @@ import Carbon
 struct KeyModifiers: OptionSet, Sendable {
     let rawValue: UInt32
 
-    init(rawValue: UInt32) {
-        self.rawValue = rawValue
-    }
-
     static let command = KeyModifiers(rawValue: UInt32(cmdKey))
     static let shift = KeyModifiers(rawValue: UInt32(shiftKey))
-    static let option = KeyModifiers(rawValue: UInt32(optionKey))
-    static let control = KeyModifiers(rawValue: UInt32(controlKey))
 }
 
 @MainActor

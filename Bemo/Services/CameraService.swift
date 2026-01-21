@@ -1,23 +1,50 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import AppKit
+
+// MARK: - Camera Frame Delegate
+
+/// Protocol for receiving camera frames for compositing
+protocol CameraFrameDelegate: AnyObject, Sendable {
+    func cameraService(didOutputPixelBuffer buffer: CVPixelBuffer)
+}
 
 // MARK: - Camera Service
 
 /// Service for managing webcam capture and preview
 @MainActor
-final class CameraService {
+final class CameraService: NSObject {
     static let shared = CameraService()
 
     // MARK: - State
 
     private var captureSession: AVCaptureSession?
-    private var videoInput: AVCaptureDeviceInput?
     private(set) var previewLayer: AVCaptureVideoPreviewLayer?
     private let sessionQueue = DispatchQueue(label: "bemo.camera.session")
+    private let outputQueue = DispatchQueue(label: "bemo.camera.output", qos: .userInteractive)
+
+    /// Wrapper to make session access Sendable-safe
+    private final class SessionWrapper: @unchecked Sendable {
+        let session: AVCaptureSession
+        init(_ session: AVCaptureSession) { self.session = session }
+    }
+
+    /// Retains a CVPixelBuffer for safe async handoff.
+    private final class RetainedPixelBuffer: @unchecked Sendable {
+        let buffer: CVPixelBuffer
+
+        init(_ buffer: CVPixelBuffer) {
+            self.buffer = buffer
+        }
+    }
 
     private(set) var isRunning: Bool = false
 
-    private init() {}
+    /// Delegate for receiving camera frames (for compositing)
+    weak var frameDelegate: CameraFrameDelegate?
+
+    private override init() {
+        super.init()
+    }
 
     // MARK: - Permission
 
@@ -32,16 +59,16 @@ final class CameraService {
         await AVCaptureDevice.requestAccess(for: .video)
     }
 
-    /// Check if permission is granted
-    var hasPermission: Bool {
-        authorizationStatus == .authorized
-    }
-
     // MARK: - Capture Control
 
     /// Start camera capture and create preview layer
     /// - Returns: The preview layer for display
     func startCapture() async throws -> AVCaptureVideoPreviewLayer {
+        // If already running, just return existing layer
+        if isRunning, let layer = previewLayer {
+            return layer
+        }
+
         // Check/request permission
         if authorizationStatus == .notDetermined {
             let granted = await requestPermission()
@@ -60,8 +87,9 @@ final class CameraService {
         // Create input
         let input = try AVCaptureDeviceInput(device: device)
 
-        // Create session
+        // Create session and wrap immediately for Sendable safety
         let session = AVCaptureSession()
+        let wrapper = SessionWrapper(session)
         session.sessionPreset = .medium
 
         // Add input
@@ -70,21 +98,32 @@ final class CameraService {
         }
         session.addInput(input)
 
+        // Add video data output for frame callbacks (used by compositor)
+        let dataOutput = AVCaptureVideoDataOutput()
+        dataOutput.videoSettings = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        dataOutput.alwaysDiscardsLateVideoFrames = true
+        dataOutput.setSampleBufferDelegate(self, queue: outputQueue)
+
+        if session.canAddOutput(dataOutput) {
+            session.addOutput(dataOutput)
+        }
+
         // Create preview layer
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
 
-        // Start session on background queue
-        await withCheckedContinuation { continuation in
-            sessionQueue.async {
-                session.startRunning()
+        // Start session on background queue using Sendable wrapper
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            sessionQueue.async { [wrapper] in
+                wrapper.session.startRunning()
                 continuation.resume()
             }
         }
 
         // Store references
         captureSession = session
-        videoInput = input
         previewLayer = layer
         isRunning = true
 
@@ -95,23 +134,33 @@ final class CameraService {
     func stopCapture() {
         guard let session = captureSession else { return }
 
-        sessionQueue.async {
-            session.stopRunning()
+        // Use Sendable wrapper for async dispatch
+        let wrapper = SessionWrapper(session)
+        sessionQueue.async { [wrapper] in
+            wrapper.session.stopRunning()
         }
 
         captureSession = nil
-        videoInput = nil
         previewLayer = nil
+        frameDelegate = nil
         isRunning = false
     }
+}
 
-    /// List available cameras
-    func availableCameras() -> [AVCaptureDevice] {
-        AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .external],
-            mediaType: .video,
-            position: .unspecified
-        ).devices
+// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+
+extension CameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
+    nonisolated func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        let retained = RetainedPixelBuffer(pixelBuffer)
+        Task { @MainActor in
+            self.frameDelegate?.cameraService(didOutputPixelBuffer: retained.buffer)
+        }
     }
 }
 

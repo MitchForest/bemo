@@ -63,26 +63,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.duration = duration
     }
 
-    /// Whether this item can be opened in an external app
-    var canOpen: Bool {
-        switch type {
-        case .filePath:
-            return FileManager.default.fileExists(atPath: content)
-        case .fileContents:
-            if let path = originalPath {
-                return FileManager.default.fileExists(atPath: path)
-            }
-            return true // Can create temp file
-        case .ocr:
-            return true // Can create temp file
-        case .screenshot, .recording:
-            if let url = fileURL {
-                return FileManager.default.fileExists(atPath: url.path)
-            }
-            return false
-        }
-    }
-
     // MARK: - Item Type
 
     enum ItemType: String, Codable, CaseIterable {

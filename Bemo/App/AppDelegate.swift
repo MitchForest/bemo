@@ -14,13 +14,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordingIndicatorController: RecordingIndicatorController?
     private var cameraOverlayController: CameraOverlayController?
     private var countdownController: CountdownOverlayController?
+    private var recordingCompleteController: RecordingCompleteController?
+    private var recordingRegionOverlayController: RecordingRegionOverlayController?
 
     // Recording state
     private var isRecording = false
     private var currentRecordingRegion: CGRect?
     private var currentDisplayID: CGDirectDisplayID?
     private var currentScreenFrame: CGRect?
-    private var currentRecordingOptions: RecordingOptions?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon - menubar only app
@@ -52,44 +53,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(handleMenubarClick)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-
-            // Enable drag & drop
-            button.registerForDraggedTypes([.fileURL])
         }
     }
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 280, height: 280)
+        popover.contentSize = NSSize(width: 280, height: 320)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: MenubarView(
             onOCRCapture: { [weak self] in self?.startOCRCapture() },
             onScreenshotCapture: { [weak self] in self?.startScreenshotCapture() },
-            onRecordingCapture: { [weak self] in self?.startQuickRecording() }
+            onRecordingCapture: { [weak self] in self?.startQuickRecording() },
+            onWindowRecordingCapture: { [weak self] in self?.startWindowRecording() }
         ))
     }
 
     private func setupHotkeys() {
         hotkeyManager = HotkeyManager()
 
-        // Cmd+Shift+1 for OCR capture
-        hotkeyManager.registerHotkey(keyCode: 0x12, modifiers: [.command, .shift]) { [weak self] in
-            self?.startOCRCapture()
+        for action in HotkeyAction.allCases {
+            hotkeyManager.registerHotkey(keyCode: action.keyCode, modifiers: action.modifiers) { [weak self] in
+                self?.handleHotkey(action)
+            }
         }
+    }
 
-        // Cmd+Shift+2 for Screenshot capture
-        hotkeyManager.registerHotkey(keyCode: 0x13, modifiers: [.command, .shift]) { [weak self] in
-            self?.startScreenshotCapture()
-        }
-
-        // Cmd+Shift+3 for Quick Recording
-        hotkeyManager.registerHotkey(keyCode: 0x14, modifiers: [.command, .shift]) { [weak self] in
-            self?.startQuickRecording()
-        }
-
-        // Cmd+Shift+V for clipboard dock
-        hotkeyManager.registerHotkey(keyCode: 0x09, modifiers: [.command, .shift]) { [weak self] in
-            self?.clipboardDock.toggle()
+    private func handleHotkey(_ action: HotkeyAction) {
+        switch action {
+        case .ocrCapture:
+            startOCRCapture()
+        case .screenshotCapture:
+            startScreenshotCapture()
+        case .recordingCapture:
+            startQuickRecording()
+        case .recordingWindowCapture:
+            startWindowRecording()
+        case .clipboardHistory:
+            clipboardDock.toggle()
         }
     }
 
@@ -99,10 +99,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menubar Actions
 
-    @objc private func handleMenubarClick(_ sender: NSStatusBarButton) {
+    @objc private func handleMenubarClick(_ _: NSStatusBarButton) {
         // If recording, stop recording on any click
         if isRecording {
             stopRecording()
+            return
+        }
+
+        if dismissSelectionOverlay() {
             return
         }
 
@@ -137,6 +141,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Close popover
         popover.performClose(nil)
 
+        if dismissSelectionOverlay() {
+            return
+        }
+
         // Start capture with OCR mode
         selectionOverlay = SelectionOverlayController()
         selectionOverlay?.start(mode: .ocr) { [weak self] result in
@@ -145,7 +153,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if case .ocrText(let text) = captureResult {
                     // Add to clipboard history (this also copies to system clipboard and shows dock)
                     ClipboardHistoryManager.shared.addOCR(text)
-                    ToastController.shared.show(message: "Copied!", preview: text, type: .ocr)
+                    FeedbackService.showCopied(preview: text, type: .ocr)
                 }
             case .failure(let error):
                 // Only show error if it's not a "no text found" case (which happens on cancel)
@@ -155,10 +163,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         // User cancelled or no text - don't show error
                         break
                     case .processingFailed:
-                        ToastController.shared.show(message: "Error", preview: error.localizedDescription, type: .error)
+                        FeedbackService.showError(error)
                     }
                 } else {
-                    ToastController.shared.show(message: "Error", preview: error.localizedDescription, type: .error)
+                    FeedbackService.showError(error)
                 }
             }
             self?.selectionOverlay = nil
@@ -170,6 +178,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func startScreenshotCapture() {
         // Close popover
         popover.performClose(nil)
+
+        if dismissSelectionOverlay() {
+            return
+        }
 
         // Start capture with screenshot mode
         selectionOverlay = SelectionOverlayController()
@@ -195,14 +207,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                                     thumbnailData: thumbnail,
                                     fileURL: fileURL
                                 )
-                                ToastController.shared.showScreenshotSaved(filename: fileURL.lastPathComponent)
+                                FeedbackService.showScreenshotSaved(filename: fileURL.lastPathComponent)
                             }
                         } catch {
-                            ToastController.shared.show(
-                                message: "Error",
-                                preview: error.localizedDescription,
-                                type: .error
-                            )
+                            FeedbackService.showError(error)
                         }
                     }
                 }
@@ -210,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // Only show error for actual failures, not cancellations
                 let errorDescription = error.localizedDescription
                 if !errorDescription.contains("No text found") {
-                    ToastController.shared.show(message: "Error", preview: errorDescription, type: .error)
+                    FeedbackService.showError(preview: errorDescription)
                 }
             }
             self?.selectionOverlay = nil
@@ -220,6 +228,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Quick Recording
 
     func startQuickRecording() {
+        startRecordingSelection(mode: .recording)
+    }
+
+    func startWindowRecording() {
+        startRecordingSelection(mode: .recordingWindow)
+    }
+
+    private func startRecordingSelection(mode: CaptureMode) {
         // If already recording, just show the indicator
         if isRecording {
             return
@@ -228,9 +244,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Close popover
         popover.performClose(nil)
 
+        if dismissSelectionOverlay() {
+            return
+        }
+
         // Start capture with recording mode
         selectionOverlay = SelectionOverlayController()
-        selectionOverlay?.start(mode: .quickRecording) { [weak self] result in
+        selectionOverlay?.start(mode: mode) { [weak self] result in
             switch result {
             case .success(let captureResult):
                 if case .recordingRegion(let rect, let displayID) = captureResult {
@@ -262,7 +282,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         recordingControlsController?.show(
             for: region,
             displayID: displayID,
-            screenFrame: screen.frame,
             onStart: { [weak self] options in
                 self?.handleRecordingStart(options: options)
             },
@@ -296,8 +315,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleRecordingStart(options: RecordingOptions) {
-        currentRecordingOptions = options
-
         if options.delaySeconds > 0 {
             // Show countdown
             countdownController = CountdownOverlayController()
@@ -319,43 +336,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func beginRecording(options: RecordingOptions) {
         guard let region = currentRecordingRegion,
-              let displayID = currentDisplayID,
-              let screenFrame = currentScreenFrame else { return }
+              let displayID = currentDisplayID else { return }
 
         Task { @MainActor in
             do {
-                // Camera overlay may already be showing from preview
-                // Update its position/size if needed, or show it if not already visible
-                if options.includeCamera {
-                    if cameraOverlayController == nil {
-                        cameraOverlayController = CameraOverlayController()
-                        try await cameraOverlayController?.show(
-                            position: options.cameraPosition,
-                            size: options.cameraSize,
-                            in: screenFrame
-                        )
-                    } else {
-                        // Update position/size if different
-                        cameraOverlayController?.updatePosition(options.cameraPosition)
-                        cameraOverlayController?.updateSize(options.cameraSize)
-                    }
-                } else {
-                    // Hide camera if it was showing from preview but user disabled it
-                    cameraOverlayController?.hide()
-                    cameraOverlayController = nil
-                }
+                // Ensure the pre-recording controls are dismissed
+                recordingControlsController?.dismiss()
+                recordingControlsController = nil
 
-                // Build recording configuration
-                let config = RecordingConfiguration(
+                // NOTE: Camera preview stays visible during recording!
+                // CompositorService shares the camera via CameraService,
+                // so the preview overlay continues to work while frames
+                // are also composited into the video.
+
+                // Build compositor configuration with style
+                let config = CompositorConfiguration(
                     region: region,
                     displayID: displayID,
+                    style: options.style,
                     captureSystemAudio: options.captureSystemAudio,
                     captureMicrophone: options.captureMicrophone,
-                    outputURL: RecordingConfiguration.defaultOutputURL()
+                    outputURL: CompositorConfiguration.defaultOutputURL()
                 )
 
-                // Start recording
-                try await ScreenRecordingService.shared.startRecording(config: config)
+                // Start composited recording
+                try await CompositorService.shared.startRecording(config: config)
+
+                showRecordingRegionOverlay()
 
                 // Show recording indicator with mic status
                 recordingIndicatorController = RecordingIndicatorController()
@@ -369,35 +376,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 isRecording = true
 
             } catch {
-                // Cleanup on error
+                // Cleanup on error - hide camera preview
                 cameraOverlayController?.hide()
                 cameraOverlayController = nil
+                hideRecordingRegionOverlay()
 
-                ToastController.shared.show(
-                    message: "Error",
-                    preview: error.localizedDescription,
-                    type: .error
-                )
+                FeedbackService.showError(error)
             }
         }
+    }
+
+    private func showRecordingRegionOverlay() {
+        guard let region = currentRecordingRegion else { return }
+        recordingRegionOverlayController = RecordingRegionOverlayController()
+        recordingRegionOverlayController?.show(region: region)
+    }
+
+    private func hideRecordingRegionOverlay() {
+        recordingRegionOverlayController?.hide()
+        recordingRegionOverlayController = nil
     }
 
     private func stopRecording() {
         Task { @MainActor in
             do {
-                // Hide indicator
+                // Hide indicator and camera preview
                 recordingIndicatorController?.hide()
                 recordingIndicatorController = nil
 
-                // Hide camera overlay
+                // Hide camera preview after recording stops
                 cameraOverlayController?.hide()
                 cameraOverlayController = nil
+
+                hideRecordingRegionOverlay()
 
                 // Stop audio monitoring
                 AudioLevelMonitor.shared.stopMonitoring()
 
-                // Stop recording
-                let outputURL = try await ScreenRecordingService.shared.stopRecording()
+                // Stop composited recording
+                let outputURL = try await CompositorService.shared.stopRecording()
 
                 // Generate thumbnail and get duration
                 let thumbnail = await ScreenshotService.shared.generateVideoThumbnail(from: outputURL, maxSize: 120)
@@ -417,29 +434,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                 }
 
-                // Format duration for toast
-                let minutes = Int(duration) / 60
-                let seconds = Int(duration) % 60
-                let durationString = String(format: "%d:%02d", minutes, seconds)
-
-                ToastController.shared.showRecordingSaved(
-                    filename: outputURL.lastPathComponent,
-                    duration: durationString
-                )
-
                 isRecording = false
                 currentRecordingRegion = nil
                 currentDisplayID = nil
                 currentScreenFrame = nil
-                currentRecordingOptions = nil
+
+                self.recordingCompleteController = RecordingCompleteController()
+                self.recordingCompleteController?.show(
+                    fileURL: outputURL,
+                    duration: duration,
+                    thumbnailData: thumbnail
+                )
 
             } catch {
-                ToastController.shared.show(
-                    message: "Error",
-                    preview: error.localizedDescription,
-                    type: .error
-                )
+                FeedbackService.showError(error)
                 isRecording = false
+                hideRecordingRegionOverlay()
             }
         }
     }
@@ -448,6 +458,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide camera preview if showing
         cameraOverlayController?.hide()
         cameraOverlayController = nil
+        hideRecordingRegionOverlay()
 
         // Stop audio monitoring
         AudioLevelMonitor.shared.stopMonitoring()
@@ -456,6 +467,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         currentRecordingRegion = nil
         currentDisplayID = nil
         currentScreenFrame = nil
-        currentRecordingOptions = nil
+    }
+
+    @discardableResult
+    private func dismissSelectionOverlay() -> Bool {
+        guard let selectionOverlay else { return false }
+        selectionOverlay.dismiss()
+        self.selectionOverlay = nil
+        return true
     }
 }

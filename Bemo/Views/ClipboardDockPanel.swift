@@ -165,7 +165,6 @@ final class ClipboardDockController {
 
 struct ClipboardDockView: View {
     let onClose: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var manager = ClipboardHistoryManager.shared
 
@@ -446,7 +445,7 @@ struct ClipboardItemView: View {
 
     private func copyItem() {
         manager.copyAgain(item)
-        ToastController.shared.showCopied(item: item)
+        FeedbackService.showCopied(item: item)
     }
 
     // MARK: - Open Action
@@ -478,7 +477,7 @@ struct ClipboardItemView: View {
                     NSWorkspace.shared.open(fileURL)
                 } else {
                     // File was deleted - show in Finder or error
-                    ToastController.shared.show(message: "Error", preview: "File not found", type: .error)
+                    FeedbackService.showError(preview: "File not found")
                 }
             }
         }
@@ -506,7 +505,7 @@ struct ClipboardItemView: View {
             try item.content.write(to: fileURL, atomically: true, encoding: .utf8)
             NSWorkspace.shared.open(fileURL)
         } catch {
-            ToastController.shared.show(message: "Error", preview: "Could not create temp file", type: .error)
+            FeedbackService.showError(preview: "Could not create temp file")
         }
     }
 

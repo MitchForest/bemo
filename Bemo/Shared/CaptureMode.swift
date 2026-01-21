@@ -4,8 +4,8 @@ import SwiftUI
 enum CaptureMode: Sendable {
     case ocr
     case screenshot
-    case quickRecording
-    case studioRecording
+    case recording  // Unified recording mode (no quick/studio split)
+    case recordingWindow
 
     /// Instructions displayed in the selection overlay
     var instructions: String {
@@ -14,10 +14,10 @@ enum CaptureMode: Sendable {
             return "Drag to select text"
         case .screenshot:
             return "Drag to capture screenshot"
-        case .quickRecording:
+        case .recording:
             return "Drag to select recording area"
-        case .studioRecording:
-            return "Drag to select recording area"
+        case .recordingWindow:
+            return "Click a window to record"
         }
     }
 
@@ -28,10 +28,10 @@ enum CaptureMode: Sendable {
             return "text.viewfinder"
         case .screenshot:
             return "camera.viewfinder"
-        case .quickRecording:
+        case .recording:
             return "record.circle"
-        case .studioRecording:
-            return "sparkles.rectangle.stack"
+        case .recordingWindow:
+            return "macwindow"
         }
     }
 
@@ -42,24 +42,11 @@ enum CaptureMode: Sendable {
             return .blue
         case .screenshot:
             return .green
-        case .quickRecording:
+        case .recording:
             return .red
-        case .studioRecording:
-            return .purple
+        case .recordingWindow:
+            return .red
         }
     }
 
-    /// Short label for the mode
-    var label: String {
-        switch self {
-        case .ocr:
-            return "OCR"
-        case .screenshot:
-            return "Screenshot"
-        case .quickRecording:
-            return "Recording"
-        case .studioRecording:
-            return "Studio"
-        }
-    }
 }

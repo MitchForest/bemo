@@ -12,13 +12,11 @@ final class AudioLevelMonitor: ObservableObject {
 
     @Published private(set) var level: Float = 0  // 0.0 to 1.0
     @Published private(set) var isMonitoring: Bool = false
-    @Published private(set) var isMuted: Bool = false
 
     // MARK: - Private
 
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
-    private var levelProcessor: AudioLevelProcessor?
 
     private init() {}
 
@@ -60,8 +58,6 @@ final class AudioLevelMonitor: ObservableObject {
                 }
             }
         }
-        levelProcessor = processor
-
         // Install tap on input node - callback runs on audio thread
         input.installTap(onBus: 0, bufferSize: 1024, format: format, block: processor.processBuffer)
 
@@ -84,19 +80,8 @@ final class AudioLevelMonitor: ObservableObject {
 
         audioEngine = nil
         inputNode = nil
-        levelProcessor = nil
         isMonitoring = false
         level = 0
-    }
-
-    /// Toggle mute state (affects visual feedback only, not actual recording)
-    func toggleMute() {
-        isMuted.toggle()
-    }
-
-    /// Set mute state
-    func setMuted(_ muted: Bool) {
-        isMuted = muted
     }
 }
 
@@ -111,7 +96,7 @@ private final class AudioLevelProcessor: @unchecked Sendable {
     }
 
     /// Process buffer - called on audio thread
-    func processBuffer(_ buffer: AVAudioPCMBuffer, _ time: AVAudioTime) {
+    func processBuffer(_ buffer: AVAudioPCMBuffer, _ _: AVAudioTime) {
         guard let channelData = buffer.floatChannelData else { return }
 
         let channelDataValue = channelData.pointee
@@ -120,8 +105,8 @@ private final class AudioLevelProcessor: @unchecked Sendable {
 
         // Calculate RMS (root mean square) for a more accurate level
         var sumOfSquares: Float = 0
-        for i in Swift.stride(from: 0, to: frameLength, by: bufferStride) {
-            let sample = channelDataValue[i]
+        for sampleIndex in Swift.stride(from: 0, to: frameLength, by: bufferStride) {
+            let sample = channelDataValue[sampleIndex]
             sumOfSquares += sample * sample
         }
         let count = frameLength / bufferStride
@@ -132,8 +117,8 @@ private final class AudioLevelProcessor: @unchecked Sendable {
         // Convert to decibels and normalize to 0-1 range
         // -60 dB to 0 dB range
         let minDb: Float = -60
-        let db = 20 * log10(max(rms, 0.0001))
-        let normalizedLevel = max(0, min(1, (db - minDb) / (-minDb)))
+        let decibels = 20 * log10(max(rms, 0.0001))
+        let normalizedLevel = max(0, min(1, (decibels - minDb) / (-minDb)))
 
         onLevelUpdate(normalizedLevel)
     }

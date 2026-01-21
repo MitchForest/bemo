@@ -73,27 +73,6 @@ final class ClipboardHistoryManager {
         add(item)
     }
 
-    /// Add file path
-    func addFilePath(_ path: String, fileName: String? = nil) {
-        let item = ClipboardItem(
-            type: .filePath,
-            content: path,
-            sourceInfo: fileName ?? URL(fileURLWithPath: path).lastPathComponent
-        )
-        add(item)
-    }
-
-    /// Add file contents
-    func addFileContents(_ contents: String, fileName: String, originalPath: String? = nil) {
-        let item = ClipboardItem(
-            type: .fileContents,
-            content: contents,
-            sourceInfo: fileName,
-            originalPath: originalPath
-        )
-        add(item)
-    }
-
     /// Add screenshot
     func addScreenshot(thumbnailData: Data, fileURL: URL) {
         let item = ClipboardItem(screenshot: thumbnailData, fileURL: fileURL)
@@ -207,14 +186,6 @@ final class ClipboardHistoryManager {
         guard isVisible else { return }
         isVisible = false
         onShouldHideDock?()
-    }
-
-    func toggleDock() {
-        if isVisible {
-            hideDock()
-        } else {
-            showDock()
-        }
     }
 
     // MARK: - Pasteboard Monitoring

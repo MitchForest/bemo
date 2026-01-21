@@ -1,14 +1,25 @@
 import SwiftUI
 import AVFoundation
 
+// MARK: - Design Constants
+
+private enum DockMetrics {
+    static let buttonSize: CGFloat = 32
+    static let iconSize: CGFloat = 14
+    static let buttonRadius: CGFloat = 8
+    static let buttonSpacing: CGFloat = 4
+    static let sectionPadding: CGFloat = 8
+    static let dividerHeight: CGFloat = 24
+    static let dockRadius: CGFloat = 12
+    static let dockPadding: CGFloat = 8
+}
+
 // MARK: - Recording Options
 
 struct RecordingOptions: Sendable {
     var captureSystemAudio: Bool = true
     var captureMicrophone: Bool = false
-    var includeCamera: Bool = false
-    var cameraPosition: CameraPosition = .bottomRight
-    var cameraSize: CameraSize = .medium
+    var style: RecordingStyle = .default
     var delaySeconds: Int = 0  // 0 = no delay, 5, or 10
 }
 
@@ -25,7 +36,7 @@ struct RecordingControlsView: View {
     @State private var options = RecordingOptions()
     @State private var micPermissionStatus: AVAuthorizationStatus = .notDetermined
     @State private var cameraPermissionStatus: AVAuthorizationStatus = .notDetermined
-    @State private var showCameraOptions = false
+    @State private var showStylePicker = false
     @State private var showRecordMenu = false
 
     init(
@@ -40,10 +51,13 @@ struct RecordingControlsView: View {
         self.onCameraToggled = onCameraToggled
     }
 
+    @State private var isStyleHovered = false
+    @State private var isMicHovered = false
+
     var body: some View {
         HStack(spacing: 0) {
-            // Left section - toggle buttons with audio meter
-            HStack(spacing: 2) {
+            // Left section - toggle buttons
+            HStack(spacing: DockMetrics.buttonSpacing) {
                 // System Audio
                 ToolbarToggle(
                     icon: options.captureSystemAudio ? "speaker.wave.2.fill" : "speaker.slash.fill",
@@ -51,52 +65,55 @@ struct RecordingControlsView: View {
                     tooltip: "System Audio"
                 )
 
-                // Microphone with level meter
-                HStack(spacing: 4) {
-                    ToolbarToggle(
-                        icon: options.captureMicrophone ? "mic.fill" : "mic.slash.fill",
-                        isOn: $options.captureMicrophone,
-                        tooltip: "Microphone",
-                        disabled: micPermissionStatus == .denied
+                // Microphone with integrated level indicator
+                Button {
+                    if micPermissionStatus != .denied {
+                        options.captureMicrophone.toggle()
+                    }
+                } label: {
+                    MicLevelIcon(
+                        level: options.captureMicrophone && audioMonitor.isMonitoring
+                            ? audioMonitor.level : 0,
+                        size: DockMetrics.iconSize,
+                        isMuted: false,
+                        isEnabled: options.captureMicrophone
                     )
-                    .onChange(of: options.captureMicrophone) { _, newValue in
-                        if newValue {
-                            if micPermissionStatus == .notDetermined {
-                                Task {
-                                    _ = await AVCaptureDevice.requestAccess(for: .audio)
-                                    micPermissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-                                    if micPermissionStatus == .authorized {
-                                        audioMonitor.startMonitoring()
-                                    }
+                    .frame(width: DockMetrics.buttonSize, height: DockMetrics.buttonSize)
+                    .background(
+                        RoundedRectangle(cornerRadius: DockMetrics.buttonRadius)
+                            .fill(isMicHovered ? Color.primary.opacity(0.08) : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+                .opacity(micPermissionStatus == .denied ? 0.4 : 1)
+                .help("Microphone")
+                .onHover { isMicHovered = $0 }
+                .onChange(of: options.captureMicrophone) { _, newValue in
+                    if newValue {
+                        if micPermissionStatus == .notDetermined {
+                            Task {
+                                _ = await AVCaptureDevice.requestAccess(for: .audio)
+                                micPermissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+                                if micPermissionStatus == .authorized {
+                                    audioMonitor.startMonitoring()
                                 }
-                            } else if micPermissionStatus == .authorized {
-                                audioMonitor.startMonitoring()
                             }
-                        } else {
-                            audioMonitor.stopMonitoring()
+                        } else if micPermissionStatus == .authorized {
+                            audioMonitor.startMonitoring()
                         }
+                    } else {
+                        audioMonitor.stopMonitoring()
                     }
-
-                    // Audio meter - fixed width container to prevent layout shifts
-                    ZStack {
-                        if options.captureMicrophone && audioMonitor.isMonitoring {
-                            CompactAudioLevelMeterView(level: audioMonitor.level)
-                                .transition(.opacity)
-                        }
-                    }
-                    .frame(width: 32)  // Reserve space for meter
                 }
 
-                // Camera with popover
+                // Camera toggle
                 ToolbarToggle(
-                    icon: options.includeCamera ? "video.fill" : "video.slash.fill",
-                    isOn: $options.includeCamera,
+                    icon: options.style.cameraEnabled ? "video.fill" : "video.slash.fill",
+                    isOn: $options.style.cameraEnabled,
                     tooltip: "Camera",
-                    disabled: cameraPermissionStatus == .denied,
-                    hasMenu: true,
-                    onLongPress: { showCameraOptions.toggle() }
+                    disabled: cameraPermissionStatus == .denied
                 )
-                .onChange(of: options.includeCamera) { _, newValue in
+                .onChange(of: options.style.cameraEnabled) { _, newValue in
                     if newValue && cameraPermissionStatus == .notDetermined {
                         Task {
                             _ = await AVCaptureDevice.requestAccess(for: .video)
@@ -109,15 +126,35 @@ struct RecordingControlsView: View {
                         onCameraToggled?(newValue)
                     }
                 }
-                .popover(isPresented: $showCameraOptions, arrowEdge: .bottom) {
-                    cameraOptionsPopover
+
+                // Style picker button (matches toggle style)
+                Button {
+                    showStylePicker.toggle()
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: DockMetrics.iconSize, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .frame(width: DockMetrics.buttonSize, height: DockMetrics.buttonSize)
+                        .background(
+                            RoundedRectangle(cornerRadius: DockMetrics.buttonRadius)
+                                .fill(isStyleHovered ? Color.primary.opacity(0.08) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Recording Style")
+                .onHover { isStyleHovered = $0 }
+                .popover(isPresented: $showStylePicker, arrowEdge: .bottom) {
+                    StylePickerView(
+                        style: $options.style,
+                        onCameraToggled: onCameraToggled
+                    )
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, DockMetrics.sectionPadding)
 
             // Divider
             Divider()
-                .frame(height: 24)
+                .frame(height: DockMetrics.dividerHeight)
                 .opacity(0.3)
 
             // Center - dimensions (stacked, left aligned)
@@ -129,50 +166,54 @@ struct RecordingControlsView: View {
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 60, alignment: .leading)  // Fixed width to prevent layout shifts
-            .padding(.horizontal, 8)
+            .frame(width: 56, alignment: .leading)
+            .padding(.horizontal, DockMetrics.sectionPadding)
 
             // Divider
             Divider()
-                .frame(height: 24)
+                .frame(height: DockMetrics.dividerHeight)
                 .opacity(0.3)
 
             // Right section - action buttons
-            HStack(spacing: 8) {
-                // Cancel
-                Button(action: {
-                    audioMonitor.stopMonitoring()
-                    onCancel()
-                }) {
+            HStack(spacing: DockMetrics.sectionPadding) {
+                // Cancel (same size as other buttons)
+                Button(
+                    action: {
+                        audioMonitor.stopMonitoring()
+                        onCancel()
+                    },
+                    label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Color.secondary.opacity(0.1))
-                        .clipShape(Circle())
-                }
+                        .frame(width: DockMetrics.buttonSize, height: DockMetrics.buttonSize)
+                        .background(
+                            RoundedRectangle(cornerRadius: DockMetrics.buttonRadius)
+                                .fill(Color.secondary.opacity(0.1))
+                        )
+                    }
+                )
                 .buttonStyle(.plain)
-                .help("Cancel")
+                .help("Cancel (ESC)")
 
                 // Record button with dropdown
                 recordButton
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, DockMetrics.sectionPadding)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, DockMetrics.dockPadding)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: DockMetrics.dockRadius)
                 .fill(.ultraThinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: DockMetrics.dockRadius)
                 .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.2), radius: 20, y: 8)
         .onAppear {
             checkPermissions()
         }
-        // NOTE: Don't stop audio monitoring on disappear - it continues during recording
     }
 
     // MARK: - Record Button with Dropdown
@@ -183,23 +224,27 @@ struct RecordingControlsView: View {
             Button {
                 startRecording()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Circle()
                         .fill(.red)
-                        .frame(width: 16, height: 16)
+                        .frame(width: 14, height: 14)
 
                     // Show delay if set
                     if options.delaySeconds > 0 {
                         Text("\(options.delaySeconds)s")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
+                .frame(width: options.delaySeconds > 0 ? 52 : 36, height: DockMetrics.buttonSize)
             }
             .buttonStyle(.plain)
-            .help(options.delaySeconds > 0 ? "Start Recording with \(options.delaySeconds)s delay" : "Start Recording")
+            .help(options.delaySeconds > 0 ? "Record with \(options.delaySeconds)s delay" : "Start Recording")
+
+            // Divider
+            Divider()
+                .frame(height: 16)
+                .opacity(0.3)
 
             // Dropdown chevron
             Button {
@@ -208,7 +253,7 @@ struct RecordingControlsView: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 32)
+                    .frame(width: 20, height: DockMetrics.buttonSize)
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showRecordMenu, arrowEdge: .bottom) {
@@ -216,7 +261,7 @@ struct RecordingControlsView: View {
             }
         }
         .background(Color.primary.opacity(0.08))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: DockMetrics.buttonRadius))
     }
 
     // MARK: - Record Delay Menu
@@ -226,7 +271,6 @@ struct RecordingControlsView: View {
             // Just select the delay - don't start recording
             DelayMenuItem(
                 label: "No Delay",
-                delay: 0,
                 icon: "record.circle",
                 isSelected: options.delaySeconds == 0
             ) {
@@ -236,7 +280,6 @@ struct RecordingControlsView: View {
 
             DelayMenuItem(
                 label: "5 Second Delay",
-                delay: 5,
                 icon: "timer",
                 isSelected: options.delaySeconds == 5
             ) {
@@ -246,7 +289,6 @@ struct RecordingControlsView: View {
 
             DelayMenuItem(
                 label: "10 Second Delay",
-                delay: 10,
                 icon: "timer",
                 isSelected: options.delaySeconds == 10
             ) {
@@ -256,58 +298,6 @@ struct RecordingControlsView: View {
         }
         .padding(8)
         .frame(width: 160)
-    }
-
-    // MARK: - Camera Options Popover
-
-    private var cameraOptionsPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Camera Options")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            // Position
-            HStack {
-                Text("Position")
-                    .font(.system(size: 12))
-                Spacer()
-                HStack(spacing: 4) {
-                    ForEach(CameraPosition.allCases, id: \.self) { position in
-                        Button {
-                            options.cameraPosition = position
-                        } label: {
-                            Image(systemName: position.icon)
-                                .font(.system(size: 10, weight: .medium))
-                                .frame(width: 24, height: 24)
-                                .background(
-                                    options.cameraPosition == position
-                                        ? Color.accentColor.opacity(0.2)
-                                        : Color.clear
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            // Size
-            HStack {
-                Text("Size")
-                    .font(.system(size: 12))
-                Spacer()
-                Picker("", selection: $options.cameraSize) {
-                    ForEach(CameraSize.allCases, id: \.self) { size in
-                        Text(size.label).tag(size)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 100)
-            }
-        }
-        .padding(12)
-        .frame(width: 200)
     }
 
     // MARK: - Actions
@@ -327,7 +317,6 @@ struct RecordingControlsView: View {
 
 private struct DelayMenuItem: View {
     let label: String
-    let delay: Int
     let icon: String
     var isSelected: Bool = false
     let action: () -> Void
@@ -335,7 +324,7 @@ private struct DelayMenuItem: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: action) {
+        Button(action: action, label: {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 12))
@@ -357,7 +346,7 @@ private struct DelayMenuItem: View {
             .padding(.vertical, 6)
             .background(isHovered || isSelected ? Color.primary.opacity(0.1) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 4))
-        }
+        })
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
     }
@@ -370,8 +359,6 @@ private struct ToolbarToggle: View {
     @Binding var isOn: Bool
     var tooltip: String = ""
     var disabled: Bool = false
-    var hasMenu: Bool = false
-    var onLongPress: (() -> Void)?
 
     @State private var isHovered = false
 
@@ -386,39 +373,26 @@ private struct ToolbarToggle: View {
                 isOn.toggle()
             }
         } label: {
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
-                    )
-
-                if hasMenu {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 6, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .offset(x: -4, y: -4)
-                }
-            }
+            Image(systemName: icon)
+                .font(.system(size: DockMetrics.iconSize, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: DockMetrics.buttonSize, height: DockMetrics.buttonSize)
+                .background(
+                    RoundedRectangle(cornerRadius: DockMetrics.buttonRadius)
+                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                )
         }
         .buttonStyle(.plain)
         .opacity(disabled ? 0.4 : 1)
         .help(tooltip)
         .onHover { isHovered = $0 }
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .onEnded { _ in onLongPress?() }
-        )
     }
 
     private var iconColor: Color {
         if isOn {
-            return .primary  // White when on
+            return .primary
         } else if isSlashIcon {
-            return .red  // Red slash when off
+            return .red
         } else {
             return .secondary
         }
