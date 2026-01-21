@@ -3,13 +3,16 @@ import SwiftUI
 struct MenubarView: View {
     let onOCRCapture: () -> Void
     let onScreenshotCapture: () -> Void
+    let onRecordingCapture: () -> Void
 
     init(
         onOCRCapture: @escaping () -> Void,
-        onScreenshotCapture: @escaping () -> Void
+        onScreenshotCapture: @escaping () -> Void,
+        onRecordingCapture: @escaping () -> Void
     ) {
         self.onOCRCapture = onOCRCapture
         self.onScreenshotCapture = onScreenshotCapture
+        self.onRecordingCapture = onRecordingCapture
     }
 
     var body: some View {
@@ -33,7 +36,7 @@ struct MenubarView: View {
                 ActionButton(
                     title: "OCR Capture",
                     icon: "text.viewfinder",
-                    shortcut: "⌘⇧2",
+                    shortcut: "⌘⇧1",
                     color: .blue,
                     action: onOCRCapture
                 )
@@ -41,9 +44,17 @@ struct MenubarView: View {
                 ActionButton(
                     title: "Screenshot",
                     icon: "camera.viewfinder",
-                    shortcut: "⌘⇧3",
+                    shortcut: "⌘⇧2",
                     color: .green,
                     action: onScreenshotCapture
+                )
+
+                ActionButton(
+                    title: "Screen Recording",
+                    icon: "record.circle",
+                    shortcut: "⌘⇧3",
+                    color: .red,
+                    action: onRecordingCapture
                 )
 
                 ActionButton(

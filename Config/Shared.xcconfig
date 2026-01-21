@@ -15,7 +15,7 @@ CURRENT_PROJECT_VERSION = 1
 // ==========================================
 // Platform Configuration
 // ==========================================
-MACOSX_DEPLOYMENT_TARGET = 14.0
+MACOSX_DEPLOYMENT_TARGET = 15.0
 
 // ==========================================
 // Build Settings
@@ -34,8 +34,10 @@ ENABLE_HARDENED_RUNTIME = YES
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_KEY_LSUIElement = YES
 INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.utilities
-INFOPLIST_KEY_NSScreenCaptureUsageDescription = Bemo needs screen recording access to capture screenshots for OCR text extraction.
+INFOPLIST_KEY_NSScreenCaptureUsageDescription = Bemo needs screen recording access to capture screenshots and record screen content.
 INFOPLIST_KEY_NSAccessibilityUsageDescription = Bemo needs accessibility access to register global keyboard shortcuts.
+INFOPLIST_KEY_NSCameraUsageDescription = Bemo uses the camera to show your webcam in screen recordings.
+INFOPLIST_KEY_NSMicrophoneUsageDescription = Bemo uses the microphone to capture audio in screen recordings.
 
 // ==========================================
 // Entitlements

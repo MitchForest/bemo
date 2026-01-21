@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import CoreGraphics
 
 // MARK: - Screenshot Service
@@ -132,6 +133,50 @@ final class ScreenshotService {
 
         // Convert to JPEG with 0.8 quality for smaller size
         return bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.8])
+    }
+
+    // MARK: - Video Thumbnail Generation
+
+    /// Generate a thumbnail from a video file
+    /// - Parameters:
+    ///   - url: URL to the video file
+    ///   - maxSize: Maximum dimension (width or height)
+    /// - Returns: JPEG data for the thumbnail
+    func generateVideoThumbnail(from url: URL, maxSize: CGFloat = 120) async -> Data? {
+        let asset = AVAsset(url: url)
+        let imageGenerator = AVAssetImageGenerator(asset: asset)
+        imageGenerator.appliesPreferredTrackTransform = true
+        imageGenerator.maximumSize = CGSize(width: maxSize * 2, height: maxSize * 2)
+
+        do {
+            // Get image at 0.5 seconds (or start if video is shorter)
+            let time = CMTime(seconds: 0.5, preferredTimescale: 600)
+            let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+            return generateThumbnail(from: cgImage, maxSize: maxSize)
+        } catch {
+            // Try at the very start
+            do {
+                let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+                return generateThumbnail(from: cgImage, maxSize: maxSize)
+            } catch {
+                print("Failed to generate video thumbnail: \(error)")
+                return nil
+            }
+        }
+    }
+
+    /// Get video duration in seconds
+    /// - Parameter url: URL to the video file
+    /// - Returns: Duration in seconds
+    func getVideoDuration(from url: URL) async -> TimeInterval? {
+        let asset = AVAsset(url: url)
+        do {
+            let duration = try await asset.load(.duration)
+            return duration.seconds
+        } catch {
+            print("Failed to get video duration: \(error)")
+            return nil
+        }
     }
 }
 
