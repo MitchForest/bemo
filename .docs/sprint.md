@@ -265,19 +265,21 @@ Bemo/
 
 ## Sprint 1 Testing Checklist
 
-- [ ] ⌘⇧3 triggers selection overlay with screenshot instructions
-- [ ] Overlay shows camera icon and "Drag to capture screenshot"
-- [ ] Selection border uses green accent color
-- [ ] Drag selection captures correct region (multi-display aware)
-- [ ] Image copied to clipboard (paste in Preview works)
-- [ ] Image saved to Desktop with correct filename format
-- [ ] Screenshot appears in clipboard dock with thumbnail
-- [ ] Clicking thumbnail in dock copies to clipboard
-- [ ] Expanding item shows filename and "Open" action works
-- [ ] Toast shows "Saved!" with filename
-- [ ] Small selections (< 10px) are cancelled (no save)
-- [ ] ESC cancels selection overlay
-- [ ] Right-click menubar → Screenshot option works
+- [x] ⌘⇧3 triggers selection overlay with screenshot instructions
+- [x] Overlay shows camera icon and "Drag to capture screenshot"
+- [x] Selection border uses green accent color
+- [x] Drag selection captures correct region (multi-display aware)
+- [x] Image copied to clipboard (paste in Preview works)
+- [x] Image saved to Desktop with correct filename format
+- [x] Screenshot appears in clipboard dock with thumbnail
+- [x] Clicking thumbnail in dock copies to clipboard
+- [x] Expanding item shows filename and "Open" action works
+- [x] Toast shows "Saved!" with filename
+- [x] Small selections (< 10px) are cancelled (no save)
+- [x] ESC cancels selection overlay
+- [x] Right-click menubar → Screenshot option works
+
+**Status: ✅ COMPLETE** - Committed `5e8ddb5`
 
 ---
 
@@ -288,6 +290,32 @@ Bemo/
 - Optional camera overlay (on-screen, captured naturally)
 - Audio capture (system audio + microphone)
 - Recording controls and indicator UI
+
+## Implementation Order
+
+Execute tasks in this order to minimize blocking dependencies:
+
+```
+Phase 1: Foundation (can be parallel)
+├── 2.1 ScreenRecordingService.swift     ─┐
+├── 2.2 CameraService.swift              ─┼─► Core services
+└── 2.12 Video thumbnail generation      ─┘
+
+Phase 2: UI Components (can be parallel)
+├── 2.4 CameraOverlayView.swift          ─┐
+├── 2.5 RecordingControlsView.swift      ─┼─► SwiftUI views
+└── 2.7 RecordingIndicatorView.swift     ─┘
+
+Phase 3: Controllers (depends on Phase 2)
+├── 2.3 CameraOverlayController.swift    ─┐
+├── 2.6 RecordingControlsController.swift ─┼─► Panel controllers
+└── 2.8 RecordingIndicatorController.swift─┘
+
+Phase 4: Integration (depends on all above)
+├── 2.9-2.11 ClipboardItem extensions    ─┐
+├── 2.13 AppDelegate integration         ─┼─► Final wiring
+└── 2.14 Entitlements & permissions      ─┘
+```
 
 ## New Files
 
@@ -304,6 +332,51 @@ Bemo/
 │   ├── CameraOverlayController.swift      # NEW - floating camera circle
 │   └── CameraOverlayView.swift            # NEW - camera preview
 └── (existing files modified)
+```
+
+---
+
+## Key API Reference
+
+### SCRecordingOutput (macOS 14.0+)
+
+The `SCRecordingOutput` API provides a simple way to record screen content directly to a file:
+
+```swift
+// Configuration
+let config = SCRecordingOutputConfiguration()
+config.outputURL = outputURL
+config.outputFileType = .mp4
+config.videoCodecType = .h264
+
+// Create output and add to stream
+let output = SCRecordingOutput(configuration: config, delegate: self)
+try stream.addRecordingOutput(output)
+
+// Recording starts when stream.startCapture() is called
+// Recording stops when stream.stopCapture() is called
+```
+
+**Important Notes:**
+- `SCRecordingOutput` captures audio/video to file automatically
+- The camera overlay appears on-screen and is captured naturally by the screen recording
+- Region recording uses `sourceRect` (normalized 0-1 coordinates) in `SCStreamConfiguration`
+- System audio + microphone are separate options in `SCStreamConfiguration`
+
+### AVFoundation Camera
+
+```swift
+let session = AVCaptureSession()
+session.sessionPreset = .medium
+
+let device = AVCaptureDevice.default(for: .video)
+let input = try AVCaptureDeviceInput(device: device!)
+session.addInput(input)
+
+let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+previewLayer.videoGravity = .resizeAspectFill
+
+session.startRunning()
 ```
 
 ---
